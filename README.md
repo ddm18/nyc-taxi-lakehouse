@@ -1,6 +1,5 @@
 # Boston Short-Term Rentals – Data Engineering Project
 
-
 ## 1. Project Overview
 
 The goal of this project is to build a consolidated and historical data foundation
@@ -74,7 +73,8 @@ The analysis should be enabled across the following dimensions:
 
 
 
-## 5. Geographic Interpretation (Business View)
+## 5. Business Views
+### 5.1 Geographical Interpretation
 
 From a business perspective, Boston is informally divided into behavioral zones:
 
@@ -106,7 +106,29 @@ From a business perspective, Boston is informally divided into behavioral zones:
 
 These groupings reflect **business perception**, not administrative boundaries.
 
+### 5.2 Temporal Interpretation
+cosa conta come season
 
+se l’anno è spezzato in periodi rilevanti
+
+se certi mesi sono confrontabili tra loro
+
+Esempi reali:
+
+“alta stagione”
+
+“bassa stagione”
+
+“periodo universitario”
+
+“weekend lungo”
+
+“holiday season”
+cosa intende il business con queste cose? ancora da chiedere.
+
+
+### 5.2 Temporal Interpretation
+OTHER VIEWS TO ADD
 
 ## 6. Data Sources
 
@@ -119,6 +141,7 @@ These groupings reflect **business perception**, not administrative boundaries.
 | Geography | Airbnb | GeoJSON | Polygons | Static |
 | Observed Weather | NOAA GHCN | CSV / API | Station × Day × Variable | Historical + Incremental |
 | Forecast Weather | NWS API | JSON | Forecast horizon | Scheduled pull ingestion |
+
 ### Reference Links
 - https://insideairbnb.com/get-the-data/
 - https://www.ncdc.noaa.gov/cdo-web/webservices/v2#gettingStarted
@@ -135,9 +158,49 @@ These groupings reflect **business perception**, not administrative boundaries.
 
 
 
-## 8. Open Questions
+## 8. Data Semantics & Modeling (TBD)
 
-The following points must be clarified with stakeholders:
+This section will be completed after direct inspection of source datasets.
+
+### Price & Availability Definitions
+- Operational definition of nightly price
+- Definition of availability at daily and aggregated levels
+- Treatment of unavailable or missing days
+
+### Data Granularity & Grain
+- Guaranteed grain of each source dataset
+- Target analytical grain(s)
+
+### Temporal Modeling & Historical Retention
+- Snapshot vs append-only ingestion
+- Handling of changes in listing attributes over time
+- Historical retention strategy
+
+### Geographic Modeling
+- Assignment of listings to neighborhoods
+- Mapping from administrative areas to business-defined zones
+
+### Weather Data Integration
+- Selection and aggregation of weather stations
+- Temporal alignment with rental data
+
+
+
+## 9. Architecture & Data Flow (High-Level, TBD)
+
+This section will outline the system architecture once ingestion and storage patterns
+are validated.
+
+- Ingestion approach
+- Data storage layers
+- Transformation responsibilities
+- Update cadence
+
+
+
+## 10. Assumptions, Limitations & Open Questions
+
+The following points must be clarified during the discovery phase:
 
 - How much historical data is required (e.g. number of years)?
 - Which holidays or city events should always be tracked?
@@ -146,7 +209,7 @@ The following points must be clarified with stakeholders:
 
 
 
-## 9. Scope Boundaries
+## 11. Scope Boundaries
 
 Out of scope for this project:
 
@@ -156,5 +219,3 @@ Out of scope for this project:
 - Streaming architectures
 
 The project focuses exclusively on **building a reliable, reusable, and analyzable data foundation**.
-
-
