@@ -1,134 +1,173 @@
-# Boston Short-Term Rentals – Data Engineering Project
+# NYC Urban Mobility & Fare Dynamics – Data Engineering Project
 
 ## 1. Project Overview
 
 The goal of this project is to build a consolidated and historical data foundation
-for short-term rental pricing and availability in **Boston**, enriched with
-weather information, in order to support business analysis on:
+for **New York City taxi mobility demand and fare dynamics**, enriched with
+weather information (and later airport traffic data), in order to support
+urban mobility analysis.
 
-- pricing trends
-- availability patterns
-- seasonal effects
-- differences across neighborhoods
-- potential impact of weather conditions
+The platform will enable analysis of:
 
-The focus of the project is **data engineering**, not real-time systems or machine learning.
+- Fare trends over time  
+- Trip demand patterns  
+- Peak vs off-peak behavior  
+- Differences across city zones  
+- Weather impact on mobility and pricing  
+- Airport-related mobility dynamics  
+
+The focus of this project is **data engineering**, not real-time processing
+or machine learning.
+
+The objective is to design a **production-like data platform**
+with governance, historical retention, data contracts, and quality controls.
 
 
+---
 
 ## 2. Stakeholders
 
 ### Primary Stakeholder
-- Operators renting short-term tourist accommodations in Boston
+
+- Urban mobility analysts
+- Transportation strategy teams
+- Urban planning observers
 
 ### Stakeholder Characteristics
-- Non-technical
-- Business-oriented
-- Interested in comparisons across time and locations
-- Currently lack a structured and historical internal data repository
+
+- Non-technical but quantitatively oriented
+- Interested in trend analysis and comparisons
+- Require structured and historical data
+- Need reproducibility and reliability
+- Focused on business interpretation rather than raw data
 
 
+---
 
 ## 3. Business Requirements
 
-The stakeholders want to:
+Stakeholders want to:
 
-- Understand **how much it costs to stay in Boston during different periods**
-- Analyze **when prices are higher and when availability is higher**
-- Compare **different neighborhoods and zones**
-- Observe **seasonal patterns**
-- Evaluate whether **weather conditions influence prices and availability**
-- Perform **comparisons across equivalent periods** (e.g. year-over-year)
+- Understand how taxi fares evolve over time  
+- Analyze when demand is higher (hourly, daily, seasonally)  
+- Compare mobility behavior across city zones  
+- Identify peak congestion periods  
+- Evaluate whether weather conditions influence trip volume and pricing  
+- Analyze airport-related mobility patterns  
+- Perform year-over-year comparisons  
+- Compare weekday vs weekend demand  
 
 ### Non-Functional Constraints
-- Data does **not** need to be real-time
-- Weekly or monthly freshness is sufficient
-- Base data granularity must be **daily**
-- Data must be **historically retained**, not re-fetched each time
-- Data is **not intended for machine learning**
-- The system must avoid reliance on ad-hoc Excel files
+
+- Data does **not need to be real-time**
+- Monthly freshness is sufficient
+- Base granularity must be **trip-level**
+- Historical data must be fully retained
+- Reproducibility must be guaranteed
+- No manual workflows (e.g., Excel exports)
+- Incremental ingestion must be supported
+- Schema evolution must be handled safely
 
 
+---
 
 ## 4. Key Analytical Dimensions
 
-The analysis should be enabled across the following dimensions:
-
 ### Time
-- Day (base granularity)
+
+- Trip timestamp (base grain)
+- Hour of day
+- Day
 - Week
 - Month
+- Quarter
 - Season
+- Year-over-Year comparisons
 
 ### Geography
-- Neighborhoods / zones within Boston
+
+- Taxi zones (official TLC zones)
+- Borough
+- Business-defined behavioral clusters
+- Airport vs non-airport zones
+
+### Trip Characteristics
+
+- Fare amount
+- Trip distance
+- Passenger count
+- Payment type
+- Tip amount
+- Trip duration
 
 ### Weather
+
 - Temperature
 - Precipitation
+- Snow indicators
+- Severe weather flags
 
-### Events
-- Public events and festivities
-- Periods with increased tourism or city activity
+### Airport Traffic (Phase 2)
+
+- Passenger arrivals per airport
+- Daily airport traffic volume
+- Airport demand index
 
 
+---
 
 ## 5. Business Views
+
 ### 5.1 Geographical Interpretation
 
-From a business perspective, Boston is informally divided into behavioral zones:
+From a behavioral perspective, NYC can be grouped into:
 
-### Premium / Central Areas
-- Back Bay
-- Beacon Hill
-- Downtown
-- Seaport
+#### Business Districts
+- Midtown
+- Financial District
+- Downtown Manhattan
 
-### High-End Residential Areas
-- South End
-- North End
-- West End
+#### Residential Zones
+- Upper East Side
+- Upper West Side
+- Brooklyn residential districts
 
-### University / Student Areas
-- Allston
-- Brighton
-- Fenway–Kenmore
-- Areas near Harvard/MIT (Cambridge, although outside Boston proper)
+#### Nightlife & Entertainment Areas
+- Lower Manhattan
+- Williamsburg
+- SoHo
+- Meatpacking District
 
-### Family / Suburban Areas (within city boundaries)
-- More residential
-- More stable pricing patterns
+#### Airport Zones
+- JFK
+- LaGuardia
+- Newark
 
-### Less Premium Areas
-- Lower prices
-- Lower weekend demand
-- Higher sensitivity to external conditions
+#### Commuter Corridors
+- Manhattan ↔ Brooklyn
+- Manhattan ↔ Queens
+- Borough-to-borough interconnections
 
-These groupings reflect **business perception**, not administrative boundaries.
-
-### 5.2 Temporal Interpretation
-cosa conta come season
-
-se l’anno è spezzato in periodi rilevanti
-
-se certi mesi sono confrontabili tra loro
-
-Esempi reali:
-
-“alta stagione”
-
-“bassa stagione”
-
-“periodo universitario”
-
-“weekend lungo”
-
-“holiday season”
-cosa intende il business con queste cose? ancora da chiedere.
+These clusters represent **behavioral groupings**, not strict administrative boundaries.
 
 
 ### 5.2 Temporal Interpretation
-OTHER VIEWS TO ADD
+
+Business-relevant time classifications may include:
+
+- Rush hours
+- Late-night mobility
+- Weekend demand shifts
+- Holiday peaks
+- Severe weather days
+- Summer vs winter patterns
+- Airport high-demand season
+
+Definitions such as “peak season” or “disruption period”
+must be formalized in the semantic layer.
+
+
+---
 
 ## 6. Data Sources
 
@@ -136,86 +175,137 @@ OTHER VIEWS TO ADD
 
 | Domain | Source | Format | Granularity | Ingestion Mode |
 |--------|--------|--------|-------------|----------------|
-| Listings | Airbnb | CSV.gz | Per entity | Snapshot |
-| Daily Pricing | Airbnb | CSV.gz | Listing × Day | Snapshot → Fact |
-| Geography | Airbnb | GeoJSON | Polygons | Static |
-| Observed Weather | NOAA GHCN | CSV / API | Station × Day × Variable | Historical + Incremental |
-| Forecast Weather | NWS API | JSON | Forecast horizon | Scheduled pull ingestion |
+| Taxi Trips | NYC TLC | Parquet | Trip-level | Monthly append |
+| Taxi Zones | NYC TLC | GeoJSON / CSV | Static | Static |
+| Weather | NOAA GHCN | CSV / API | Station × Day | Historical + Incremental |
+| Airport Traffic (Phase 2) | TSA / Aviation data | CSV | Airport × Day | Monthly |
+| Holidays & Events | Public datasets | CSV / API | Event × Date | Incremental |
 
 ### Reference Links
-- https://insideairbnb.com/get-the-data/
-- https://www.ncdc.noaa.gov/cdo-web/webservices/v2#gettingStarted
-- https://www.weather.gov/documentation/services-web-api
+
+- https://www.nyc.gov/site/tlc/about/tlc-trip-record-data.page  
+- https://registry.opendata.aws/nyc-tlc-trip-records-pds/  
+- https://www.ncdc.noaa.gov/cdo-web/webservices/v2  
+- https://www.tsa.gov/travel/passenger-volumes  
 
 
+---
 
 ## 7. Data Management Principles
 
-- Data must be **persisted internally** and not re-downloaded on each use
-- Historical data must be preserved even if source formats change
-- Data ingestion will **simulate periodic arrivals** of external datasets
-- External sources should be treated as **upstream providers**, not as live dependencies
+- External datasets are treated as **upstream providers**
+- Data must be **persisted internally**
+- Backfill ingestion must be supported
+- Monthly incremental ingestion must be automated
+- Pipeline must be idempotent
+- Schema evolution must be detected
+- Data contracts must be enforced at each layer
+- Quality metrics must be tracked over time
+- No direct live dependency on upstream S3 queries
 
 
+---
 
-## 8. Data Semantics & Modeling (TBD)
+## 8. Data Semantics & Modeling
 
-This section will be completed after direct inspection of source datasets.
+### Fact Table
 
-### Price & Availability Definitions
-- Operational definition of nightly price
-- Definition of availability at daily and aggregated levels
-- Treatment of unavailable or missing days
+**Fact_Trips**
 
-### Data Granularity & Grain
-- Guaranteed grain of each source dataset
-- Target analytical grain(s)
+- One row per trip
+- Base grain: trip-level
+- Surrogate keys referencing dimensions
+
+### Dimension Tables
+
+- Dim_Time
+- Dim_Zone
+- Dim_Borough
+- Dim_Weather
+- Dim_Airport
+- Dim_Event
 
 ### Temporal Modeling & Historical Retention
-- Snapshot vs append-only ingestion
-- Handling of changes in listing attributes over time
-- Historical retention strategy
 
-### Geographic Modeling
-- Assignment of listings to neighborhoods
-- Mapping from administrative areas to business-defined zones
+- Append-only bronze layer
+- Partitioning by year/month
+- Reprocessing capability per partition
+- Metadata tracking (`ingestion_ts`, `source_file`, versioning)
 
-### Weather Data Integration
-- Selection and aggregation of weather stations
-- Temporal alignment with rental data
+### Weather Integration
 
+- Join daily weather observations by trip date
+- Optional hourly alignment
+- Flag extreme weather events
 
+### Airport Integration (Phase 2)
 
-## 9. Architecture & Data Flow (High-Level, TBD)
-
-This section will outline the system architecture once ingestion and storage patterns
-are validated.
-
-- Ingestion approach
-- Data storage layers
-- Transformation responsibilities
-- Update cadence
+- Identify airport zones
+- Classify airport-related trips
+- Join with daily airport passenger volumes
+- Compute airport demand index
 
 
+---
+
+## 9. Architecture & Data Flow
+
+The system follows a layered architecture:
+
+### Bronze Layer
+
+- Raw monthly parquet ingestion
+- Metadata augmentation
+- Source file preservation
+
+### Silver Layer
+
+- Type enforcement
+- Deduplication
+- Data quality validation
+- Zone mapping
+- Weather enrichment
+
+### Gold Layer
+
+- Aggregated business-ready views
+- Zone-level daily revenue
+- Hourly demand analysis
+- Airport corridor analytics
+- Weather impact comparisons
+
+Orchestration must support:
+
+- Historical backfill
+- Monthly incremental ingestion
+- Selective partition reprocessing
+
+
+---
 
 ## 10. Assumptions, Limitations & Open Questions
 
-The following points must be clarified during the discovery phase:
+- How many years of history should be retained?
+- How to detect republished monthly datasets?
+- What defines severe weather disruption?
+- How to formally classify behavioral clusters?
+- What data quality thresholds are acceptable?
+- Should airport traffic be treated as a dimension or fact?
 
-- How much historical data is required (e.g. number of years)?
-- Which holidays or city events should always be tracked?
-- Is geographic analysis needed only at group/neighborhood level or also by coordinates?
-- Should full historical retention be maintained even when data sources change?
 
-
+---
 
 ## 11. Scope Boundaries
 
-Out of scope for this project:
+Out of scope:
 
-- Real-time data processing
+- Real-time streaming architectures
 - Machine learning pipelines
-- Automated pricing recommendations
-- Streaming architectures
+- Demand forecasting models
+- Dynamic pricing engines
+- Simulation frameworks
 
-The project focuses exclusively on **building a reliable, reusable, and analyzable data foundation**.
+The project focuses exclusively on:
+
+> Building a robust, versioned, production-like
+> data foundation for urban mobility analytics.
