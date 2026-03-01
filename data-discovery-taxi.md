@@ -19,13 +19,13 @@
 
 ---
 
-## 2. Schema Validation
+## 2. Schema Validation +
 
 ### 🔎 What to check
-- List of columns per selected month
-- Data types per column
-- Differences between years
-- Added/removed/renamed columns
+- List of columns per selected month +
+- Data types per column +
+- Differences between years +
+- Added/removed/renamed columns +
 
 ### ❓ Question we are answering
 - Is the schema stable across time?
