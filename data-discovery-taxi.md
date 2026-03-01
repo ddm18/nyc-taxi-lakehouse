@@ -34,8 +34,74 @@
 
 ### 📝 Notes / Findings
 
+all yellow dfs have these columns from 2013 on:
+VendorID                          int64
+tpep_pickup_datetime     datetime64[us]
+tpep_dropoff_datetime    datetime64[us]
+passenger_count                   int64
+trip_distance                   float64
+RatecodeID                        int64
+store_and_fwd_flag                  str
+PULocationID                      int64
+DOLocationID                      int64
+payment_type                      int64
+fare_amount                     float64
+extra                           float64
+mta_tax                         float64
+tip_amount                      float64
+tolls_amount                    float64
+improvement_surcharge           float64
+total_amount                    float64
+congestion_surcharge             integer
+airport_fee                      integer
+(2013 extract)
+
+among these those that changed are:
+RatecodeID int64 -> float64
+airport_fee integer ->	float64
+congestion_surcharge integer -> float64
+passenger_count int64 -> float64
 
 
+all green dfs have these columns from 2014 on:
+VendorID                          int64
+lpep_pickup_datetime     datetime64[us]
+lpep_dropoff_datetime    datetime64[us]
+store_and_fwd_flag                  str
+RatecodeID                        int64
+PULocationID                      int64
+DOLocationID                      int64
+passenger_count                   int64
+trip_distance                   float64
+fare_amount                     float64
+extra                           float64
+mta_tax                         float64
+tip_amount                      float64
+tolls_amount                    float64
+ehail_fee                        integer
+improvement_surcharge           float64
+total_amount                    float64
+payment_type                      int64
+trip_type                       float64
+congestion_surcharge             integer
+dtype: integer
+(2014 extract)
+
+among these those that changed are:
+RatecodeID int64 -> float64
+congestion_surcharge	integer	-> float64	
+ehail_fee integer ->	float64	
+passenger_count	int64 -> float64
+payment_type int64 -> float64
+trip_type float64 -> int64
+
+several of these changes go back and forth through the years
+
+Conclusione esplorativa: il set di colonne è “quasi stabile” per periodo, ma i tipi non sono stabili e oscillano (int/float/integer) su campi chiave.
+
+Implicazione: per evitare rotture di pipeline e interpretazioni incoerenti, serve schema versioning (almeno a livello di “logical schema + mapping/casting rules”).
+
+Open question da rimandare: capire se i cambi tipo sono dovuti a null/mixed values o a cambiamenti reali del dato (da verificare con campioni mirati quando chiudi l’esplorazione).
 ---
 
 ## 3. Grain Confirmation
