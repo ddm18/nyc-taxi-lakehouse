@@ -5,23 +5,26 @@
 The goal of this project is to build a consolidated and historical data foundation
 for **New York City taxi mobility demand and fare dynamics**, enriched with
 weather information (and later airport traffic data), in order to support
-urban mobility analysis.
+urban mobility analysis and **recent operational trend monitoring**.
 
 The platform will enable analysis of:
 
-- Fare trends over time  
-- Trip demand patterns  
-- Peak vs off-peak behavior  
-- Differences across city zones  
-- Weather impact on mobility and pricing  
-- Airport-related mobility dynamics  
+- Short-term fare trends
+- Trip demand patterns
+- Peak vs off-peak behavior
+- Differences across city zones
+- Weather impact on mobility and pricing
+- Airport-related mobility dynamics
+
+The platform focuses primarily on **recent mobility dynamics**, with analytical
+workloads typically covering **the most recent three months of data**, while
+preserving full historical raw data for reproducibility and backfill.
 
 The focus of this project is **data engineering**, not real-time processing
 or machine learning.
 
 The objective is to design a **production-like data platform**
 with governance, historical retention, data contracts, and quality controls.
-
 
 ---
 
@@ -36,11 +39,10 @@ with governance, historical retention, data contracts, and quality controls.
 ### Stakeholder Characteristics
 
 - Non-technical but quantitatively oriented
-- Interested in trend analysis and comparisons
-- Require structured and historical data
+- Interested in **trend analysis and behavioral patterns**
+- Require structured and reliable datasets
 - Need reproducibility and reliability
 - Focused on business interpretation rather than raw data
-
 
 ---
 
@@ -48,26 +50,26 @@ with governance, historical retention, data contracts, and quality controls.
 
 Stakeholders want to:
 
-- Understand how taxi fares evolve over time  
-- Analyze when demand is higher (hourly, daily, seasonally)  
-- Compare mobility behavior across city zones  
-- Identify peak congestion periods  
-- Evaluate whether weather conditions influence trip volume and pricing  
-- Analyze airport-related mobility patterns  
-- Perform year-over-year comparisons  
-- Compare weekday vs weekend demand  
+- Understand how taxi fares evolve over recent periods
+- Analyze when demand is higher (hourly, daily, seasonally)
+- Compare mobility behavior across city zones
+- Identify peak congestion periods
+- Monitor short-term demand changes
+- Compare weekday vs weekend demand
+- Evaluate whether weather conditions influence trip volume and pricing
+- Analyze airport-related mobility patterns
 
 ### Non-Functional Constraints
 
 - Data does **not need to be real-time**
 - Monthly freshness is sufficient
 - Base granularity must be **trip-level**
-- Historical data must be fully retained
+- Historical raw data must be **fully retained**
+- Analytical workloads focus primarily on **recent operational windows**
 - Reproducibility must be guaranteed
 - No manual workflows (e.g., Excel exports)
 - Incremental ingestion must be supported
 - Schema evolution must be handled safely
-
 
 ---
 
@@ -82,7 +84,9 @@ Stakeholders want to:
 - Month
 - Quarter
 - Season
-- Year-over-Year comparisons
+- Day-over-day comparisons
+- Week-over-week comparisons
+- Month-over-month comparisons
 
 ### Geography
 
@@ -100,19 +104,18 @@ Stakeholders want to:
 - Tip amount
 - Trip duration
 
-### Weather
+### Weather (Phase 2)
 
 - Temperature
 - Precipitation
 - Snow indicators
 - Severe weather flags
 
-### Airport Traffic (Phase 2)
+### Airport Traffic (Phase 3)
 
 - Passenger arrivals per airport
 - Daily airport traffic volume
 - Airport demand index
-
 
 ---
 
@@ -150,6 +153,7 @@ From a behavioral perspective, NYC can be grouped into:
 
 These clusters represent **behavioral groupings**, not strict administrative boundaries.
 
+---
 
 ### 5.2 Temporal Interpretation
 
@@ -163,9 +167,8 @@ Business-relevant time classifications may include:
 - Summer vs winter patterns
 - Airport high-demand season
 
-Definitions such as “peak season” or “disruption period”
+Definitions such as **peak demand periods** or **mobility disruptions**
 must be formalized in the semantic layer.
-
 
 ---
 
@@ -177,17 +180,16 @@ must be formalized in the semantic layer.
 |--------|--------|--------|-------------|----------------|
 | Taxi Trips | NYC TLC | Parquet | Trip-level | Monthly append |
 | Taxi Zones | NYC TLC | GeoJSON / CSV | Static | Static |
-| Weather | NOAA GHCN | CSV / API | Station × Day | Historical + Incremental |
-| Airport Traffic (Phase 2) | TSA / Aviation data | CSV | Airport × Day | Monthly |
+| Weather (Phase 2) | NOAA GHCN | CSV / API | Station × Day | Historical + Incremental |
+| Airport Traffic (Phase 3) | TSA / Aviation data | CSV | Airport × Day | Monthly |
 | Holidays & Events | Public datasets | CSV / API | Event × Date | Incremental |
 
 ### Reference Links
 
-- https://www.nyc.gov/site/tlc/about/tlc-trip-record-data.page  
-- https://registry.opendata.aws/nyc-tlc-trip-records-pds/  
-- https://www.ncdc.noaa.gov/cdo-web/webservices/v2  
-- https://www.tsa.gov/travel/passenger-volumes  
-
+- https://www.nyc.gov/site/tlc/about/tlc-trip-record-data.page
+- https://registry.opendata.aws/nyc-tlc-trip-records-pds/
+- https://www.ncdc.noaa.gov/cdo-web/webservices/v2
+- https://www.tsa.gov/travel/passenger-volumes
 
 ---
 
@@ -197,12 +199,11 @@ must be formalized in the semantic layer.
 - Data must be **persisted internally**
 - Backfill ingestion must be supported
 - Monthly incremental ingestion must be automated
-- Pipeline must be idempotent
+- Pipelines must be **idempotent**
 - Schema evolution must be detected
 - Data contracts must be enforced at each layer
 - Quality metrics must be tracked over time
 - No direct live dependency on upstream S3 queries
-
 
 ---
 
@@ -232,6 +233,9 @@ must be formalized in the semantic layer.
 - Reprocessing capability per partition
 - Metadata tracking (`ingestion_ts`, `source_file`, versioning)
 
+Historical raw data is preserved indefinitely while analytical
+queries typically focus on **recent operational time windows**.
+
 ### Weather Integration
 
 - Join daily weather observations by trip date
@@ -245,57 +249,22 @@ must be formalized in the semantic layer.
 - Join with daily airport passenger volumes
 - Compute airport demand index
 
-
 ---
 
-## 9. Architecture & Data Flow
 
-The system follows a layered architecture:
+## 9. Assumptions, Limitations & Open Questions
 
-### Bronze Layer
-
-- Raw monthly parquet ingestion
-- Metadata augmentation
-- Source file preservation
-
-### Silver Layer
-
-- Type enforcement
-- Deduplication
-- Data quality validation
-- Zone mapping
-- Weather enrichment
-
-### Gold Layer
-
-- Aggregated business-ready views
-- Zone-level daily revenue
-- Hourly demand analysis
-- Airport corridor analytics
-- Weather impact comparisons
-
-Orchestration must support:
-
-- Historical backfill
-- Monthly incremental ingestion
-- Selective partition reprocessing
-
-
----
-
-## 10. Assumptions, Limitations & Open Questions
-
-- How many years of history should be retained?
+- What is the optimal **analytical horizon** for operational trend monitoring?
+- How should **hot vs cold data** be managed across layers?
 - How to detect republished monthly datasets?
 - What defines severe weather disruption?
 - How to formally classify behavioral clusters?
 - What data quality thresholds are acceptable?
 - Should airport traffic be treated as a dimension or fact?
 
-
 ---
 
-## 11. Scope Boundaries
+## 10. Scope Boundaries
 
 Out of scope:
 
@@ -307,5 +276,5 @@ Out of scope:
 
 The project focuses exclusively on:
 
-> Building a robust, versioned, production-like
-> data foundation for urban mobility analytics.
+> Building a robust, versioned, production-like  
+> data foundation for **operational urban mobility analytics**.
