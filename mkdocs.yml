@@ -1,0 +1,62 @@
+site_name: NYC Urban Mobility Data Platform
+
+repo_url: https://github.com/ddm18/nyc-taxi-lakehouse
+repo_name: /ddm18/nyc-taxi-lakehouse
+edit_uri: edit/main/docs/
+
+theme:
+  name: material
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.expand
+    - navigation.top
+    - content.code.copy
+    - content.action.edit
+    - search.highlight
+    - search.share
+  icon:
+    repo: fontawesome/brands/github
+
+plugins:
+  - search
+  - mermaid2
+  - awesome-pages
+  - git-revision-date-localized:
+      enable_creation_date: true
+  - minify:
+      minify_html: true
+
+nav:
+  - Architecture:
+      - Overview: index.md
+      - Phase 1: arch-phase1.md
+
+  - ADR:
+      - 001 Ingestion Model: adr/001-ingestion-model.md
+      - 002 Partitioning Strategy: adr/002-partitioning-strategy.md
+      - 003 Schema Contracts: adr/003-schema-contracts.md
+      - 004 Data Quality: adr/004-data-quality.md
+      - 005 Data Governance: adr/005-data-governance.md
+      - 006 Infrastructure: adr/006-infrastructure.md
+      - 007 Pipeline: adr/007-pipeline.md
+
+  - Discovery:
+      - Data Discovery Taxi: exploration_notes/data-discovery-taxi.md
+      - Data Discovery Weather: exploration_notes/data-discovery-weather.md
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.highlight
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.tabbed
+  - pymdownx.emoji
+  - pymdownx.tasklist:
+      custom_checkbox: true

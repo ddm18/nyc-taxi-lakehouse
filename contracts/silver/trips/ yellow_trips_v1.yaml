@@ -1,0 +1,266 @@
+contract_name: yellow_trips_v1
+layer: silver
+domain: nyc_taxi
+dataset: yellow_trips
+status: draft
+owners:
+  - data_engineering
+
+description: >
+  Canonical Silver contract for NYC TLC Yellow Taxi trip data.
+  This contract defines the normalized schema for historical yellow taxi trip extracts.
+  It is designed to absorb observed historical source type drift while providing a stable downstream interface.
+
+grain: one row per taxi trip
+
+source:
+  publisher: NYC TLC
+  source_dataset: yellow
+
+storage:
+  table_name: silver.yellow_trips_v1
+  format: delta
+
+partitioning:
+  columns:
+    - pickup_year
+    - pickup_month
+
+schema_evolution:
+  additive_columns: allowed
+  breaking_changes: require_new_contract_version
+  source_type_drift: handled_via_normalization_rules
+  notes:
+    - This contract is defined using historical discovery evidence available at design time.
+    - Runtime ingestion should not assume future source columns beyond those already observed.
+
+columns:
+  - name: vendor_id
+    type: bigint
+    nullable: true
+    source_column: VendorID
+    description: Taxi vendor identifier
+    semantic_type: code
+
+  - name: pickup_ts
+    type: timestamp
+    nullable: false
+    source_column: tpep_pickup_datetime
+    description: Trip pickup timestamp
+    semantic_type: timestamp
+
+  - name: dropoff_ts
+    type: timestamp
+    nullable: true
+    source_column: tpep_dropoff_datetime
+    description: Trip dropoff timestamp
+    semantic_type: timestamp
+
+  - name: passenger_count
+    type: double
+    nullable: true
+    source_column: passenger_count
+    description: Passenger count as published by source
+    semantic_type: count
+    expectations:
+      - non_negative
+      - integer_like_when_present
+
+  - name: trip_distance
+    type: double
+    nullable: true
+    source_column: trip_distance
+    description: Trip distance in miles
+    semantic_type: measure
+
+  - name: rate_code_id
+    type: double
+    nullable: true
+    source_column: RatecodeID
+    description: Rate code identifier as published by source
+    semantic_type: code
+    expectations:
+      - integer_like_when_present
+
+  - name: store_and_fwd_flag
+    type: string
+    nullable: true
+    source_column: store_and_fwd_flag
+    description: Store and forward flag
+    semantic_type: flag
+
+  - name: pu_location_id
+    type: bigint
+    nullable: true
+    source_column: PULocationID
+    description: Pickup location identifier
+    semantic_type: foreign_key
+
+  - name: do_location_id
+    type: bigint
+    nullable: true
+    source_column: DOLocationID
+    description: Dropoff location identifier
+    semantic_type: foreign_key
+
+  - name: payment_type
+    type: bigint
+    nullable: true
+    source_column: payment_type
+    description: Payment type code
+    semantic_type: code
+    expectations:
+      - integer_like_when_present
+
+  - name: fare_amount
+    type: double
+    nullable: true
+    source_column: fare_amount
+    description: Base fare amount
+    semantic_type: monetary
+
+  - name: extra
+    type: double
+    nullable: true
+    source_column: extra
+    description: Extra charges
+    semantic_type: monetary
+
+  - name: mta_tax
+    type: double
+    nullable: true
+    source_column: mta_tax
+    description: MTA tax
+    semantic_type: monetary
+
+  - name: tip_amount
+    type: double
+    nullable: true
+    source_column: tip_amount
+    description: Tip amount
+    semantic_type: monetary
+
+  - name: tolls_amount
+    type: double
+    nullable: true
+    source_column: tolls_amount
+    description: Toll amount
+    semantic_type: monetary
+
+  - name: improvement_surcharge
+    type: double
+    nullable: true
+    source_column: improvement_surcharge
+    description: Improvement surcharge
+    semantic_type: monetary
+
+  - name: total_amount
+    type: double
+    nullable: true
+    source_column: total_amount
+    description: Total charged amount
+    semantic_type: monetary
+
+  - name: congestion_surcharge
+    type: double
+    nullable: true
+    source_column: congestion_surcharge
+    description: Congestion surcharge
+    semantic_type: monetary
+
+  - name: airport_fee
+    type: double
+    nullable: true
+    source_column: airport_fee
+    description: Airport fee
+    semantic_type: monetary
+
+  - name: pickup_year
+    type: int
+    nullable: false
+    derived: true
+    description: Year derived from pickup timestamp
+    semantic_type: partition_key
+
+  - name: pickup_month
+    type: int
+    nullable: false
+    derived: true
+    description: Month derived from pickup timestamp
+    semantic_type: partition_key
+
+  - name: pickup_date
+    type: date
+    nullable: false
+    derived: true
+    description: Calendar date derived from pickup timestamp
+    semantic_type: calendar
+
+  - name: dow
+    type: int
+    nullable: false
+    derived: true
+    description: Day of week derived from pickup timestamp
+    semantic_type: calendar
+
+  - name: is_weekend
+    type: boolean
+    nullable: false
+    derived: true
+    description: Weekend flag derived from pickup timestamp
+    semantic_type: calendar_flag
+
+normalization_rules:
+  - canonical_column: passenger_count
+    canonical_type: double
+    observed_source_types:
+      - int64
+      - float64
+    strategy: cast_to_double
+    rationale: historical source type drift across years
+
+  - canonical_column: rate_code_id
+    canonical_type: double
+    observed_source_types:
+      - int64
+      - float64
+    strategy: cast_to_double
+    rationale: historical source type drift across years
+
+  - canonical_column: congestion_surcharge
+    canonical_type: double
+    observed_source_types:
+      - integer
+      - float64
+    strategy: cast_to_double
+    rationale: historical source type drift across years
+
+  - canonical_column: airport_fee
+    canonical_type: double
+    observed_source_types:
+      - integer
+      - float64
+    strategy: cast_to_double
+    rationale: historical source type drift across years
+
+data_quality:
+  blocking_rules:
+    - pickup_ts_is_not_null
+  warning_rules:
+    - passenger_count_non_negative
+    - passenger_count_integer_like_when_present
+    - fare_amount_non_negative
+    - trip_distance_between_0_and_200
+    - rate_code_id_integer_like_when_present
+    - congestion_surcharge_non_negative
+    - airport_fee_non_negative
+
+observations:
+  - Yellow source column set is historically close to stable from 2013 onward.
+  - A subset of fields shows recurring type oscillation across years.
+  - Root cause of type drift is not fully established at this stage.
+  - Contract prioritizes compatibility-safe normalization and downstream stability.
+
+consumer_notes:
+  - This contract is dataset-specific and should not be treated as a unified taxi schema.
+  - Cross-dataset harmonization with green taxi data should occur in a separate unified model if needed.

@@ -1,0 +1,34 @@
+source_name: green_tlc_source
+publisher: NYC TLC
+
+dataset:
+  source_dataset: green
+  business_name: Green Taxi Trip Records
+
+access:
+  method: pull
+  delivery_interface: cloudfront_http
+  base_url: https://d37ci6vzurychx.cloudfront.net/trip-data
+
+objects:
+  format: parquet
+  publication_granularity: month
+  object_naming_pattern: green_tripdata_YYYY-MM.parquet
+  request_path_pattern: /trip-data/green_tripdata_YYYY-MM.parquet
+
+retrieval:
+  user_agent_required: true
+  retry_supported: true
+  default_max_retries: 5
+  retry_strategy: exponential_backoff_with_jitter
+
+ingestion:
+  ingestion_unit: dataset_month
+  expected_file_per_unit: 1
+  landing_path_pattern: landing/green/year={YYYY}/month={MM}/
+  landing_file_name: green_tripdata_YYYY-MM.parquet
+
+notes:
+  - Source objects are retrieved through HTTP pull from a CloudFront-distributed endpoint.
+  - Monthly source objects are read as Parquet by the ingestion client.
+  - The ingestion design assumes one logical source object per dataset-month.
