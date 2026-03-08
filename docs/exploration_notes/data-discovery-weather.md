@@ -1,146 +1,134 @@
-# Data Discovery – NOAA Weather Dataset
+# Data Discovery - NOAA Weather Dataset
+
+!!! abstract "Goal"
+    Validate weather data suitability for enrichment of taxi analytics at the required temporal granularity.
+
+## Discovery Checklist
+
+- [ ] Dataset/source final selection
+- [ ] Variable dictionary and units validation
+- [ ] Temporal coverage validation
+- [ ] Station strategy decision
+- [ ] Missing/anomaly strategy
+- [ ] Join strategy with taxi data
 
 ## 1. Dataset Selection
 
-### 🔎 What to check
-- Selected weather stations
-- Coverage years
-- Variables available (TMAX, TMIN, PRCP, SNOW, etc.)
-- API vs bulk dataset
+???+ question "What to check"
+    - Selected stations
+    - Coverage years
+    - Available variables (`TMAX`, `TMIN`, `PRCP`, `SNOW`, ...)
+    - API vs bulk source
 
-### ❓ Question we are answering
-- Which dataset should be used for production?
-- Does coverage align with taxi dataset timeline?
+???+ info "Question"
+    - Which dataset should be production source?
+    - Does coverage align with taxi timeline?
 
-### 📝 Notes / Findings
-
-
-
----
+!!! note "Findings"
+    Pending completion.
 
 ## 2. Schema & Variables
 
-### 🔎 What to check
-- Variable names
-- Measurement units
-- Missing value encoding
-- Quality flags
+???+ question "What to check"
+    - Variable names
+    - Measurement units
+    - Missing-value encoding
+    - Quality flags
 
-### ❓ Question we are answering
-- How should weather variables be interpreted?
-- Do we need unit normalization?
-- Are quality flags required in modeling?
+???+ info "Question"
+    - How should variables be interpreted?
+    - Is unit normalization required?
+    - Are quality flags needed in modeling?
 
-### 📝 Notes / Findings
-
-
-
----
+!!! note "Findings"
+    Pending completion.
 
 ## 3. Temporal Coverage
 
-### 🔎 What to check
-- Missing days
-- Multi-day gaps
-- Complete yearly coverage
+???+ question "What to check"
+    - Missing days
+    - Multi-day gaps
+    - Year-level completeness
 
-### ❓ Question we are answering
-- Is weather data continuous?
-- Do we need gap filling?
-- Can we rely on day-level joins?
+???+ info "Question"
+    - Is weather data continuous enough?
+    - Is gap filling required?
+    - Can we rely on day-level joins?
 
-### 📝 Notes / Findings
-
-
-
----
+!!! note "Findings"
+    Pending completion.
 
 ## 4. Multi-Station Strategy
 
-### 🔎 What to check
-- Number of stations covering NYC
-- Overlapping coverage
-- Station reliability
+???+ question "What to check"
+    - Number of NYC-relevant stations
+    - Coverage overlap
+    - Station reliability
 
-### ❓ Question we are answering
-- Should we select a primary station?
-- Should we compute station average?
-- Is Manhattan-specific weather needed?
+???+ info "Question"
+    - Primary station vs aggregate?
+    - Is Manhattan-specific weather needed?
 
-### 📝 Notes / Findings
-
-
-
----
+!!! note "Findings"
+    Pending completion.
 
 ## 5. Value Sanity Checks
 
-### 🔎 What to check
+???+ question "What to check"
+    **Temperature**
+    - Plausible min/max
+    - Unusual spikes
 
-#### Temperature
-- Min / Max plausible range
-- Unusual spikes
+    **Precipitation**
+    - Extreme daily values
 
-#### Precipitation
-- Extreme daily values
+    **Snow**
+    - Winter consistency
 
-#### Snow
-- Winter consistency
+???+ info "Question"
+    - Are extreme values realistic?
+    - Do we need anomaly flags or caps?
 
-### ❓ Question we are answering
-- Do we need anomaly flags?
-- Are extreme values realistic?
-- Should we cap outliers?
-
-### 📝 Notes / Findings
-
-
-
----
+!!! note "Findings"
+    Pending completion.
 
 ## 6. Alignment with Taxi Data
 
-### 🔎 What to check
-- Date alignment (timezone?)
-- Day-level vs hour-level need
-- Time granularity compatibility
+???+ question "What to check"
+    - Date alignment and timezone assumptions
+    - Day-level vs hour-level requirement
+    - Granularity compatibility
 
-### ❓ Question we are answering
-- Can we safely join on date?
-- Is hourly weather required?
-- Do we risk temporal mismatch?
+???+ info "Question"
+    - Is date-level join safe?
+    - Is hourly weather required?
+    - Is temporal mismatch a risk?
 
-### 📝 Notes / Findings
-
-
-
----
+!!! note "Findings"
+    Pending completion.
 
 ## 7. Missing Data Strategy
 
-### 🔎 What to check
-- % missing per variable
-- Seasonal missing pattern
-- Station reliability differences
+???+ question "What to check"
+    - `%` missing per variable
+    - Seasonal missing patterns
+    - Missing patterns by station
 
-### ❓ Question we are answering
-- Should missing values block enrichment?
-- Should missing weather create a separate flag?
-- Do we need imputation?
+???+ info "Question"
+    - Should missing data block enrichment?
+    - Should missing weather set explicit flags?
+    - Is imputation required?
 
-### 📝 Notes / Findings
-
-
-
----
+!!! note "Findings"
+    Pending completion.
 
 ## 8. Weather Modeling Decisions
 
-### ❓ Strategic Questions
+???+ question "Strategic questions"
+    - Daily or hourly weather?
+    - Single station or multi-station aggregate?
+    - Derived features (`rain_flag`, `snow_flag`)?
+    - Definition of `extreme_weather_day`?
 
-- Use daily or hourly weather?
-- Single station or aggregated?
-- Create derived features (rain_flag, snow_flag)?
-- Define "extreme weather day"?
-
-### 📝 Final Notes
+!!! note "Final notes"
+    Pending completion.

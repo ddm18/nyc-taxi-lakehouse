@@ -1,40 +1,52 @@
-# Data Discovery – NYC Taxi Dataset
+# Data Discovery - NYC Taxi Dataset
+
+!!! abstract "Goal"
+    Validate data shape, quality, and modeling implications before defining stable contracts and production pipelines.
+
+## Discovery Checklist
+
+- [x] Initial schema scan (yellow/green)
+- [x] Type drift identification across years
+- [ ] Grain validation and duplicate strategy
+- [ ] Volume profiling by month/day/hour
+- [ ] Null and outlier profiling
+- [ ] Referential integrity with taxi zones
+- [ ] Final quality gate proposal
 
 ## 1. Dataset Overview
 
-### 🔎 What to check
-- Months selected for analysis
-- Years selected for comparison
-- File format (Parquet / CSV)
-- File size per month
+???+ question "What to check"
+    - Months selected for analysis
+    - Years selected for comparison
+    - File format (`Parquet` / `CSV`)
+    - File size per month
 
-### ❓ Question we are answering
-- What is the scale of the dataset?
-- How large is a typical monthly partition?
-- Is storage/partitioning strategy necessary?
+???+ info "Question"
+    - What is the scale of the dataset?
+    - How large is a typical monthly partition?
+    - Is a storage/partition strategy required?
 
-### 📝 Notes / Findings
+!!! note "Findings"
+    Pending completion.
 
+## 2. Schema Validation
 
+???+ question "What to check"
+    - Column list per selected month
+    - Data type per column
+    - Year-over-year differences
+    - Added/removed/renamed columns
 
----
+???+ info "Question"
+    - Is schema stable across time?
+    - Is schema versioning required?
+    - Are there breaking changes across years?
 
-## 2. Schema Validation +
+### Yellow Taxi (reference snapshot)
 
-### 🔎 What to check
-- List of columns per selected month +
-- Data types per column +
-- Differences between years +
-- Added/removed/renamed columns +
+Columns observed from 2013 onward:
 
-### ❓ Question we are answering
-- Is the schema stable across time?
-- Do we need schema versioning?
-- Are there breaking changes across years?
-
-### 📝 Notes / Findings
-
-all yellow dfs have these columns from 2013 on:
+```text
 VendorID                          int64
 tpep_pickup_datetime     datetime64[us]
 tpep_dropoff_datetime    datetime64[us]
@@ -54,16 +66,22 @@ improvement_surcharge           float64
 total_amount                    float64
 congestion_surcharge             integer
 airport_fee                      integer
-(2013 extract)
+```
 
-among these those that changed are:
-RatecodeID int64 -> float64
-airport_fee integer ->	float64
-congestion_surcharge integer -> float64
-passenger_count int64 -> float64
+Type changes observed:
 
+| Column | From | To |
+|---|---|---|
+| `RatecodeID` | `int64` | `float64` |
+| `airport_fee` | `integer` | `float64` |
+| `congestion_surcharge` | `integer` | `float64` |
+| `passenger_count` | `int64` | `float64` |
 
-all green dfs have these columns from 2014 on:
+### Green Taxi (reference snapshot)
+
+Columns observed from 2014 onward:
+
+```text
 VendorID                          int64
 lpep_pickup_datetime     datetime64[us]
 lpep_dropoff_datetime    datetime64[us]
@@ -84,174 +102,153 @@ total_amount                    float64
 payment_type                      int64
 trip_type                       float64
 congestion_surcharge             integer
-dtype: integer
-(2014 extract)
+```
 
-among these those that changed are:
-RatecodeID int64 -> float64
-congestion_surcharge	integer	-> float64	
-ehail_fee integer ->	float64	
-passenger_count	int64 -> float64
-payment_type int64 -> float64
-trip_type float64 -> int64
+Type changes observed:
 
-several of these changes go back and forth through the years
+| Column | From | To |
+|---|---|---|
+| `RatecodeID` | `int64` | `float64` |
+| `congestion_surcharge` | `integer` | `float64` |
+| `ehail_fee` | `integer` | `float64` |
+| `passenger_count` | `int64` | `float64` |
+| `payment_type` | `int64` | `float64` |
+| `trip_type` | `float64` | `int64` |
 
-Conclusione esplorativa: il set di colonne è “quasi stabile” per periodo, ma i tipi non sono stabili e oscillano (int/float/integer) su campi chiave.
+!!! warning "Exploratory conclusion"
+    Column sets are mostly stable, but key types are not stable and oscillate (`int`/`float`/`integer`) across years.
 
-Implicazione: per evitare rotture di pipeline e interpretazioni incoerenti, serve schema versioning (almeno a livello di “logical schema + mapping/casting rules”).
+!!! success "Implication"
+    Define schema versioning with logical schema + explicit mapping/casting rules to prevent pipeline breaks.
 
-Open question da rimandare: capire se i cambi tipo sono dovuti a null/mixed values o a cambiamenti reali del dato (da verificare con campioni mirati quando chiudi l’esplorazione).
----
+!!! tip "Open question"
+    Verify whether type drift is driven by null/mixed values or by real upstream semantic changes via targeted sampling.
 
 ## 3. Grain Confirmation
 
-### 🔎 What to check
-- Identify primary grain (trip-level?)
-- Duplicate row detection
-- Unique keys (if any)
-- Timestamp structure
+???+ question "What to check"
+    - Primary grain (trip-level?)
+    - Duplicate row detection
+    - Unique key candidates
+    - Timestamp consistency
 
-### ❓ Question we are answering
-- What is the true grain of the fact table?
-- Do we need a surrogate trip identifier?
-- Is the dataset append-only?
+???+ info "Question"
+    - What is the true fact grain?
+    - Is a surrogate trip identifier needed?
+    - Is the dataset append-only?
 
-### 📝 Notes / Findings
-
-
-
----
+!!! note "Findings"
+    Pending completion.
 
 ## 4. Volume Profiling
 
-### 🔎 What to check
-- Total records per month
-- Average records per day
-- Hourly trip distribution
-- Seasonality patterns
+???+ question "What to check"
+    - Total records by month
+    - Average records/day
+    - Hourly trip distribution
+    - Seasonality patterns
 
-### ❓ Question we are answering
-- What is the ingestion scale?
-- Do we need partitioning by month/year?
-- Are there demand peaks affecting modeling?
+???+ info "Question"
+    - What is the ingestion scale?
+    - Is `year/month` partitioning sufficient?
+    - Are there demand peaks affecting modeling?
 
-### 📝 Notes / Findings
-
-
-
----
+!!! note "Findings"
+    Pending completion.
 
 ## 5. Null & Missing Value Analysis
 
-### 🔎 What to check
-- % null per column
-- Patterns of null (correlated with zones or dates?)
-- Columns with unexpected missing values
+???+ question "What to check"
+    - `%` null per column
+    - Null patterns by time/zone
+    - Unexpected missing values
 
-### ❓ Question we are answering
-- Are critical fields reliable (fare, location, distance)?
-- Do we need data quality rules?
-- Should nulls block silver ingestion?
+???+ info "Question"
+    - Are critical fields reliable (fare, location, distance)?
+    - Which DQ rules are mandatory?
+    - Should nulls block Silver ingestion?
 
-### 📝 Notes / Findings
-
-
-
----
+!!! note "Findings"
+    Pending completion.
 
 ## 6. Range & Distribution Analysis
 
-### 🔎 What to check
+???+ question "What to check"
+    **Fare**
+    - Minimum / Maximum
+    - Percentiles (`P50`, `P90`, `P99`)
+    - `%` negative values
 
-#### Fare
-- Minimum
-- Maximum
-- Percentiles (P50, P90, P99)
-- % negative values
+    **Trip Distance**
+    - `%` zero values
+    - `%` extreme values
+    - Maximum distance
 
-#### Trip Distance
-- % zero
-- % extreme values
-- Maximum distance
+    **Trip Duration**
+    - Negative duration
+    - Very long trips (`> 24h`)
 
-#### Trip Duration
-- Negative duration?
-- Very long trips (> 24h?)
+???+ info "Question"
+    - Which outliers require filtering?
+    - Are anomaly flags needed?
+    - What should be considered invalid data?
 
-### ❓ Question we are answering
-- Are there outliers requiring filtering?
-- Do we need anomaly detection rules?
-- What constitutes invalid data?
-
-### 📝 Notes / Findings
-
-
-
----
+!!! note "Findings"
+    Pending completion.
 
 ## 7. Referential Integrity (Zone Mapping)
 
-### 🔎 What to check
-- Distinct pickup_location_id
-- Distinct dropoff_location_id
-- Missing zone mappings
-- Invalid IDs
+???+ question "What to check"
+    - Distinct `pickup_location_id`
+    - Distinct `dropoff_location_id`
+    - Missing zone mappings
+    - Invalid IDs
 
-### ❓ Question we are answering
-- Can every trip be mapped to a zone?
-- Do we need an "Unknown zone" bucket?
-- Is the dimension table complete?
+???+ info "Question"
+    - Can every trip be mapped to a zone?
+    - Is an `Unknown zone` bucket required?
+    - Is the zone dimension complete?
 
-### 📝 Notes / Findings
-
-
-
----
+!!! note "Findings"
+    Pending completion.
 
 ## 8. Airport Zone Identification
 
-### 🔎 What to check
-- Identify airport zone IDs
-- % trips touching airport zones
-- Revenue share airport-related
+???+ question "What to check"
+    - Airport zone IDs
+    - `%` of trips touching airport zones
+    - Airport-related revenue share
 
-### ❓ Question we are answering
-- How significant are airport trips?
-- Should airport trips be flagged in silver layer?
-- Is separate modeling required?
+???+ info "Question"
+    - How significant are airport trips?
+    - Should airport trips be flagged in Silver?
+    - Is separate modeling needed?
 
-### 📝 Notes / Findings
-
-
-
----
+!!! note "Findings"
+    Pending completion.
 
 ## 9. Temporal Behavior
 
-### 🔎 What to check
-- Weekday vs weekend distribution
-- Peak hour detection
-- Seasonal comparison (winter vs summer)
+???+ question "What to check"
+    - Weekday vs weekend distribution
+    - Peak-hour windows
+    - Winter vs summer comparison
 
-### ❓ Question we are answering
-- Do we need specific business temporal dimensions?
-- Should we define “rush hour” as derived attribute?
+???+ info "Question"
+    - Are dedicated temporal business dimensions needed?
+    - Should `rush_hour` be a derived attribute?
 
-### 📝 Notes / Findings
-
-
-
----
+!!! note "Findings"
+    Pending completion.
 
 ## 10. Discovery Conclusions
 
-### ❓ Strategic Questions
+???+ question "Strategic questions"
+    - Is monthly partitioning enough?
+    - Is schema stable enough for a contract?
+    - Which DQ checks are mandatory?
+    - Is deduplication logic required?
+    - Estimated 5-year storage footprint?
 
-- Is monthly partitioning sufficient?
-- Is schema stable enough for contract definition?
-- What are mandatory data quality checks?
-- Do we need deduplication logic?
-- What is the estimated storage footprint (5 years)?
-
-### 📝 Final Notes
+!!! note "Final notes"
+    Pending completion.

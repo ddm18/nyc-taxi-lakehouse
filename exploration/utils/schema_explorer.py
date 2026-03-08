@@ -1,8 +1,11 @@
 import os
 import re
 import uuid
+from typing import Any, Sequence, cast
 
 import duckdb
+
+SqlRow = tuple[Any, ...]
 
 
 class SchemaExplorer:
@@ -30,10 +33,18 @@ class SchemaExplorer:
             clean = f"_{clean}"
         return clean
 
+    @staticmethod
+    def _columns(df: duckdb.DuckDBPyRelation) -> list[str]:
+        return [str(col) for col in cast(Sequence[Any], df.columns)]
+
+    @staticmethod
+    def _types(df: duckdb.DuckDBPyRelation) -> list[str]:
+        return [str(dtype) for dtype in cast(Sequence[Any], df.types)]
+
     @classmethod
     def _rows_to_relation(
         cls,
-        rows: list[tuple],
+        rows: list[SqlRow],
         columns: list[tuple[str, str]],
         order_by: str | None = None,
     ) -> duckdb.DuckDBPyRelation:
@@ -59,7 +70,10 @@ class SchemaExplorer:
     def compare_columns(
         dfs: dict[str, duckdb.DuckDBPyRelation],
     ) -> duckdb.DuckDBPyRelation:
-        all_columns = sorted(set().union(*[set(df.columns) for df in dfs.values()]))
+        all_columns_set: set[str] = set()
+        for df in dfs.values():
+            all_columns_set.update(SchemaExplorer._columns(df))
+        all_columns = sorted(all_columns_set)
 
         dataset_cols: list[tuple[str, str, set[str]]] = []
         used_names: set[str] = set()
@@ -71,11 +85,11 @@ class SchemaExplorer:
                 suffix += 1
                 candidate = f"{safe_name}_{suffix}"
             used_names.add(candidate)
-            dataset_cols.append((original_name, candidate, set(df.columns)))
+            dataset_cols.append((original_name, candidate, set(SchemaExplorer._columns(df))))
 
-        rows: list[tuple] = []
+        rows: list[SqlRow] = []
         for col in all_columns:
-            row = [col]
+            row: list[str | bool] = [col]
             for _, _, cols in dataset_cols:
                 row.append(col in cols)
             rows.append(tuple(row))
@@ -89,7 +103,10 @@ class SchemaExplorer:
     def compare_dtypes(
         dfs: dict[str, duckdb.DuckDBPyRelation],
     ) -> duckdb.DuckDBPyRelation:
-        all_columns = sorted(set().union(*[set(df.columns) for df in dfs.values()]))
+        all_columns_set: set[str] = set()
+        for df in dfs.values():
+            all_columns_set.update(SchemaExplorer._columns(df))
+        all_columns = sorted(all_columns_set)
 
         dataset_cols: list[tuple[str, str, dict[str, str]]] = []
         used_names: set[str] = set()
@@ -101,12 +118,12 @@ class SchemaExplorer:
                 suffix += 1
                 candidate = f"{safe_name}_{suffix}"
             used_names.add(candidate)
-            dtype_map = dict(zip(df.columns, map(str, df.types)))
+            dtype_map = dict(zip(SchemaExplorer._columns(df), SchemaExplorer._types(df)))
             dataset_cols.append((original_name, candidate, dtype_map))
 
-        rows: list[tuple] = []
+        rows: list[SqlRow] = []
         for col in all_columns:
-            row = [col]
+            row: list[str | None] = [col]
             for _, _, dtype_map in dataset_cols:
                 row.append(dtype_map.get(col))
             rows.append(tuple(row))
@@ -120,7 +137,10 @@ class SchemaExplorer:
     def show_schema_differences(
         dfs: dict[str, duckdb.DuckDBPyRelation],
     ) -> duckdb.DuckDBPyRelation:
-        all_columns = sorted(set().union(*[set(df.columns) for df in dfs.values()]))
+        all_columns_set: set[str] = set()
+        for df in dfs.values():
+            all_columns_set.update(SchemaExplorer._columns(df))
+        all_columns = sorted(all_columns_set)
 
         dataset_cols: list[tuple[str, str, dict[str, str]]] = []
         used_names: set[str] = set()
@@ -132,15 +152,15 @@ class SchemaExplorer:
                 suffix += 1
                 candidate = f"{safe_name}_{suffix}"
             used_names.add(candidate)
-            dtype_map = dict(zip(df.columns, map(str, df.types)))
+            dtype_map = dict(zip(SchemaExplorer._columns(df), SchemaExplorer._types(df)))
             dataset_cols.append((original_name, candidate, dtype_map))
 
-        rows: list[tuple] = []
+        rows: list[SqlRow] = []
         for col in all_columns:
             values = [dtype_map.get(col) for _, _, dtype_map in dataset_cols]
             non_null_values = {value for value in values if value is not None}
             if len(non_null_values) > 1:
-                rows.append(tuple([col] + values))
+                rows.append(tuple([col, *values]))
 
         columns = [("column", "VARCHAR")] + [
             (safe_name, "VARCHAR") for _, safe_name, _ in dataset_cols
@@ -148,16 +168,24 @@ class SchemaExplorer:
         return SchemaExplorer._rows_to_relation(rows, columns, order_by='"column"')
 
     @staticmethod
-    def schema_signature(df: duckdb.DuckDBPyRelation):
-        return tuple(sorted((col, str(dtype)) for col, dtype in zip(df.columns, df.types)))
+    def schema_signature(df: duckdb.DuckDBPyRelation) -> tuple[tuple[str, str], ...]:
+        return tuple(
+            sorted(
+                (col, dtype)
+                for col, dtype in zip(
+                    SchemaExplorer._columns(df),
+                    SchemaExplorer._types(df),
+                )
+            )
+        )
 
     @staticmethod
     def basic_profile(df: duckdb.DuckDBPyRelation) -> duckdb.DuckDBPyRelation:
         selects: list[str] = []
-        for col, dtype in zip(df.columns, df.types):
+        for col, dtype in zip(SchemaExplorer._columns(df), SchemaExplorer._types(df)):
             quoted_col = SchemaExplorer._quote_ident(col)
             col_literal = col.replace("'", "''")
-            dtype_literal = str(dtype).replace("'", "''")
+            dtype_literal = dtype.replace("'", "''")
             selects.append(
                 f"""
                 SELECT

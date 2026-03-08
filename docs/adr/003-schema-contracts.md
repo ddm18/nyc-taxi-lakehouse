@@ -1,65 +1,42 @@
-# ADR-003 – Schema Evolution Strategy (Handling Observed Type Drift)
+# ADR-003 - Schema Evolution Strategy (Type Drift Handling)
 
 ## Status
-Accepted
+**Accepted**
 
 ## Context
 
-Inspection of the NYC TLC trip datasets within the project scope (2014 → latest available year) shows:
+Observed TLC behavior in scope:
 
-- Column names remain stable across the observed period.
-- Data types vary across years for some fields.
+- Column set is mostly stable.
+- Data types drift across years for some fields.
 
-This type drift is most likely caused by differences in upstream exports and nullability patterns rather than structural schema redesign.
-
-The platform must therefore tolerate upstream type variation while providing a stable and predictable dataset for downstream transformations.
-
-The Silver layer represents the **canonical dataset** used by downstream processing.
+Likely cause: upstream export/nullability variation more than semantic redesign.
+The platform needs stability for downstream layers while preserving raw source fidelity.
 
 ## Decision
 
-1. **Bronze stores data as received.**
+1. Bronze stores source data as received.
+2. Silver enforces a canonical schema.
+3. Type normalization is applied in Silver with deterministic cast rules.
+4. Additive columns are allowed and onboarded explicitly.
+5. Breaking schema changes require a new version.
+6. Gold depends on a fixed Silver version.
 
-   Bronze preserves the source dataset with minimal transformation and tolerates type differences across partitions.
+Canonical schema reference: `contracts/silver/trips/ yellow_trips_v1.yaml` and `contracts/silver/trips/green_trips_v1.yaml`.
 
-2. **Silver enforces a canonical schema.**
+Versioning examples:
 
-   Silver datasets follow a predefined schema that defines the canonical type for each column. contracts/silver_trips_v1.yaml
-
-3. **Type normalization occurs in Silver.**
-
-   When type drift exists across source partitions, Silver applies deterministic casting rules to normalize values into the canonical schema.
-
-4. **Additive column changes are allowed.**
-
-   If new columns appear in the upstream dataset, they are preserved in Bronze and incorporated into Silver only when explicitly added to the canonical schema.
-
-5. **Breaking schema changes require versioning.**
-
-   If the canonical schema must change incompatibly (for example column removal, rename, or incompatible type change affecting semantics), a new dataset version is created.
-
-   Example:
-   - silver.trips_v1 
-   - silver.trips_v2
-
-
-6. **Gold datasets depend on a specific Silver version.**
-
-    Gold transformations reference a fixed Silver dataset version to ensure stability of downstream outputs.
+- `silver.trips_v1`
+- `silver.trips_v2`
 
 ## Consequences
 
-- The pipeline remains robust to observed type drift across historical partitions.
-- Bronze preserves the original source structure for reproducibility and auditing.
-- Silver provides a stable canonical interface for downstream transformations.
-- Schema changes that affect downstream semantics are managed through dataset versioning.
+- Pipeline remains robust to historical type drift.
+- Bronze remains reproducible/auditable.
+- Silver is a stable interface for downstream logic.
+- Breaking changes are explicit and versioned.
 
 ## Alternatives Considered
 
-**Strict schema enforcement during ingestion**
-
-Rejected because observed type drift across years would cause ingestion failures.
-
-**Automatic schema mutation without a canonical schema**
-
-Rejected because it could silently break downstream datasets and reduce schema stability.
+- Strict schema enforcement at ingestion: rejected (would fail on drifted partitions).
+- Automatic schema mutation without contract: rejected (high downstream break risk).

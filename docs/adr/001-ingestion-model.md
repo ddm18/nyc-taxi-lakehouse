@@ -1,45 +1,36 @@
-# ADR-001 – Ingestion Model: Controlled Pull with Internal Event (Month Granularity)
+# ADR-001 - Ingestion Model: Controlled Pull with Internal Event
 
 ## Status
-Accepted
+**Accepted**
 
 ## Context
 
-- Public datasets (e.g., NYC TLC) are batch-based and may be served through CDN layers (e.g., CloudFront), which may introduce throttling or transient failures.
-- Phase 1 goals:
-  - Reproducible ingestion
-  - Structured backfill
-  - Basic auditability
-  - Event-driven downstream processing
-- Real-time streaming is out of scope.
+- Public datasets (for example NYC TLC) are batch-oriented.
+- Upstream delivery may include transient failures/throttling.
+- Phase 1 requires reproducibility, backfill support, auditability, and event-driven downstream processing.
+- Streaming is out of scope.
 
-This decision currently applies to the NYC TLC taxi datasets included in Phase 1.
-Other datasets (e.g., weather) may adopt different partitioning strategies depending on their structure and access patterns.
+This ADR applies to NYC TLC datasets in Phase 1.
 
 ## Decision
 
-The platform adopts a **controlled batch pull ingestion model** at **monthly granularity**.
+The platform adopts controlled batch pull ingestion at monthly granularity.
 
-1. A scheduled job ("Ingestion Controller") performs pull-based ingestion for a specific dataset and month.
-2. Raw files are materialized in Landing using deterministic partition paths.
-3. When ingestion for a dataset-month completes successfully, the system emits an **internal arrival event**.
-4. Downstream pipelines (Landing → Bronze → Silver → Gold) are triggered based on this internal event.
+1. A scheduled **Ingestion Controller** ingests one dataset-month.
+2. Raw files are stored in Landing with deterministic paths.
+3. On successful completion, an internal arrival event is emitted.
+4. Pipelines run from Landing -> Bronze -> Silver -> Gold based on that event.
 
-The event unit is **dataset-month**.
+Event unit: `dataset-month`.
 
 ## Consequences
 
-- The system is internally event-driven while relying on pull-based public sources.
-- Backfill is implemented by executing ingestion for historical months.
-- The ingestion layer is logically separated from transformation layers.
+- Internally event-driven orchestration over pull-based public sources.
+- Backfill is deterministic by replaying historical months.
+- Ingestion remains logically separated from transformations.
 
 ## Alternatives Considered
 
-- Pure scheduled pipelines without an explicit arrival event  
-  Rejected: weaker control and audit semantics.
-
-- Source-driven push/event ingestion  
-  Rejected: not available for public batch datasets.
-
-- Full event-bus architecture (SNS/SQS/Kafka)  
-  Deferred: unnecessary complexity for Phase 1.
+- Scheduled-only orchestration without arrival event: rejected (weaker audit/control semantics).
+- Source push/event model: rejected (not available for these datasets).
+- Full event bus (SNS/SQS/Kafka): deferred (overkill for Phase 1).

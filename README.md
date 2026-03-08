@@ -201,7 +201,7 @@ must be formalized in the semantic layer.
 - Monthly incremental ingestion must be automated
 - Pipelines must be **idempotent**
 - Schema evolution must be detected
-- Data contracts must be enforced at each layer
+- Data contracts must be enforced in Silver
 - Quality metrics must be tracked over time
 - No direct live dependency on upstream S3 queries
 
@@ -242,7 +242,7 @@ queries typically focus on **recent operational time windows**.
 - Optional hourly alignment
 - Flag extreme weather events
 
-### Airport Integration (Phase 2)
+### Airport Integration (Phase 3)
 
 - Identify airport zones
 - Classify airport-related trips

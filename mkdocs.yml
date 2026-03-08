@@ -40,6 +40,7 @@ nav:
       - 005 Data Governance: adr/005-data-governance.md
       - 006 Infrastructure: adr/006-infrastructure.md
       - 007 Pipeline: adr/007-pipeline.md
+      - 008 Transformation Layer: adr/008-dbt-transformation-layer.md
 
   - Discovery:
       - Data Discovery Taxi: exploration_notes/data-discovery-taxi.md
@@ -52,7 +53,11 @@ markdown_extensions:
   - toc:
       permalink: true
   - pymdownx.details
-  - pymdownx.superfences
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:mermaid2.fence_mermaid_custom
   - pymdownx.highlight
   - pymdownx.inlinehilite
   - pymdownx.snippets

@@ -1,0 +1,7 @@
+{
+  "typeCheckingMode": "strict",
+  "venvPath": ".",
+  "venv": ".venv",
+  "include": ["exploration/utils"],
+  "pythonVersion": "3.13"
+}

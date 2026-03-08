@@ -1,41 +1,31 @@
-# ADR-007 – Pipeline Processing State Tracking
+# ADR-007 - Pipeline Processing State Tracking
 
 ## Status
-Accepted
+**Accepted**
 
 ## Context
 
-The ingestion model operates at dataset-month granularity (ADR-001).
-
-Pipelines must support:
-
-- retry
-- backfill
-- operational visibility
-- bounded reprocessing
-
-To enable these capabilities, the system must track the processing state of each dataset-month across pipeline stages.
+Pipelines run at dataset-month granularity and must support retry, backfill, and operational visibility.
+A persistent ledger is needed to track stage-level completion.
 
 ## Decision
 
-The platform introduces a processing state ledger stored in the operational schema.
+Introduce processing-state tracking in operational metadata.
 
-Example table:
+Ledger table example: `ops.pipeline_state`.
 
-ops.pipeline_state
-
-The table records the status of each dataset-month for each pipeline stage:
+Tracked stages:
 
 - ingestion
 - bronze
 - silver
 - gold
 
-Each pipeline updates the ledger upon successful completion.
+Each stage updates the ledger on successful completion.
 
 ## Consequences
 
-- The system supports deterministic backfill.
-- Failed pipeline stages can be retried safely.
-- Operational visibility is improved.
-- Event-driven pipelines remain idempotent.
+- Deterministic backfill execution.
+- Safer retries after failures.
+- Clear operational visibility per dataset-month.
+- Better idempotency in event-driven orchestration.

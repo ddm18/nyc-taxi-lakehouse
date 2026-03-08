@@ -1,8 +1,11 @@
 import os
 import re
 import uuid
+from typing import Any, Sequence, cast
 
 import duckdb
+
+SqlRow = tuple[Any, ...]
 
 
 class VolumeExplorer:
@@ -22,10 +25,21 @@ class VolumeExplorer:
     def _quote_ident(value: str) -> str:
         return f'"{value.replace(chr(34), chr(34) * 2)}"'
 
+    @staticmethod
+    def _columns(df: duckdb.DuckDBPyRelation) -> list[str]:
+        return [str(col) for col in cast(Sequence[Any], df.columns)]
+
+    @staticmethod
+    def _fetchone_required(relation: duckdb.DuckDBPyRelation) -> SqlRow:
+        row = relation.fetchone()
+        if row is None:
+            raise ValueError("Expected one row from query but received none")
+        return row
+
     @classmethod
     def _rows_to_relation(
         cls,
-        rows: list[tuple],
+        rows: list[SqlRow],
         columns: list[tuple[str, str]],
         order_by: str | None = None,
     ) -> duckdb.DuckDBPyRelation:
@@ -67,8 +81,9 @@ class VolumeExplorer:
             "lpep_pickup_datetime",
             "pickup_datetime",
         )
+        columns = VolumeExplorer._columns(df)
         for col in candidates:
-            if col in df.columns:
+            if col in columns:
                 return col
         raise ValueError(
             "Could not detect pickup datetime column. Pass a dataframe with one of: "
@@ -77,11 +92,12 @@ class VolumeExplorer:
 
     @staticmethod
     def _row_count(df: duckdb.DuckDBPyRelation) -> int:
-        return int(df.aggregate("COUNT(*) AS row_count").fetchone()[0])
+        row = VolumeExplorer._fetchone_required(df.aggregate("COUNT(*) AS row_count"))
+        return int(row[0])
 
     @staticmethod
     def _null_percentage(df: duckdb.DuckDBPyRelation) -> tuple[int, int, float]:
-        columns = list(df.columns)
+        columns = VolumeExplorer._columns(df)
         if not columns:
             return 0, 0, 0.0
 
@@ -89,17 +105,19 @@ class VolumeExplorer:
             f"SUM(CASE WHEN {VolumeExplorer._quote_ident(col)} IS NULL THEN 1 ELSE 0 END)"
             for col in columns
         )
-        row_count, null_cells = df.query(
-            "src",
-            f"""
-            SELECT
-                COUNT(*)::BIGINT AS row_count,
-                ({null_expr})::BIGINT AS null_cells
-            FROM src
-            """,
-        ).fetchone()
-        row_count = int(row_count or 0)
-        null_cells = int(null_cells or 0)
+        row = VolumeExplorer._fetchone_required(
+            df.query(
+                "src",
+                f"""
+                SELECT
+                    COUNT(*)::BIGINT AS row_count,
+                    ({null_expr})::BIGINT AS null_cells
+                FROM src
+                """,
+            )
+        )
+        row_count = int(row[0] or 0)
+        null_cells = int(row[1] or 0)
         total_cells = row_count * len(columns)
         null_pct = (100.0 * null_cells / total_cells) if total_cells > 0 else 0.0
         return null_cells, total_cells, float(null_pct)
@@ -120,7 +138,7 @@ class VolumeExplorer:
         """
         Return total row count for each dataset key (YYYY-MM).
         """
-        rows: list[tuple] = []
+        rows: list[SqlRow] = []
         for key, df in dfs.items():
             year, month = VolumeExplorer._parse_key(key)
             rows.append((key, year, month, VolumeExplorer._row_count(df)))
@@ -142,20 +160,22 @@ class VolumeExplorer:
         """
         Return average records per active pickup day for each dataset key (YYYY-MM).
         """
-        rows: list[tuple] = []
+        rows: list[SqlRow] = []
         for key, df in dfs.items():
             year, month = VolumeExplorer._parse_key(key)
             pickup_col = VolumeExplorer._detect_pickup_column(df)
-            stats = df.query(
-                "src",
-                f"""
-                SELECT
-                    COUNT(*) AS total_records,
-                    COUNT(DISTINCT CAST({VolumeExplorer._quote_ident(pickup_col)} AS DATE)) AS active_days
-                FROM src
-                WHERE {VolumeExplorer._quote_ident(pickup_col)} IS NOT NULL
-                """,
-            ).fetchone()
+            stats = VolumeExplorer._fetchone_required(
+                df.query(
+                    "src",
+                    f"""
+                    SELECT
+                        COUNT(*) AS total_records,
+                        COUNT(DISTINCT CAST({VolumeExplorer._quote_ident(pickup_col)} AS DATE)) AS active_days
+                    FROM src
+                    WHERE {VolumeExplorer._quote_ident(pickup_col)} IS NOT NULL
+                    """,
+                )
+            )
             total_records = int(stats[0] or 0)
             active_days = int(stats[1] or 0)
             avg_per_day = float(total_records / active_days) if active_days > 0 else 0.0
@@ -208,13 +228,13 @@ class VolumeExplorer:
         - total_records_per_month: total records per dataset
         - avg_records_per_day: average records per active day per dataset
         """
-        per_dataset_rows: list[tuple] = []
+        per_dataset_rows: list[SqlRow] = []
         row_counts: list[int] = []
         null_pcts: list[float] = []
         for key, df in dfs.items():
             year, month = VolumeExplorer._parse_key(key)
             row_count = VolumeExplorer._row_count(df)
-            column_count = len(df.columns)
+            column_count = len(VolumeExplorer._columns(df))
             cell_count = row_count * column_count
             null_cells, total_cells, null_pct = VolumeExplorer._null_percentage(df)
             per_dataset_rows.append(
@@ -309,21 +329,22 @@ class VolumeExplorer:
         file_name = f"{year_range}.xlsx"
         file_path = os.path.join(output_dir, file_name)
 
-        with pd.ExcelWriter(file_path) as writer:
-            report["overview"].df().to_excel(
-                writer, sheet_name="overview", index=False
+        writer_ctx = cast(Any, pd.ExcelWriter(file_path))
+        with writer_ctx as excel_writer:
+            cast(Any, report["overview"].df()).to_excel(
+                excel_writer, sheet_name="overview", index=False
             )
-            report["per_dataset"].df().to_excel(
-                writer, sheet_name="per_dataset", index=False
+            cast(Any, report["per_dataset"].df()).to_excel(
+                excel_writer, sheet_name="per_dataset", index=False
             )
-            report["avg_by_month_number"].df().to_excel(
-                writer, sheet_name="avg_by_month", index=False
+            cast(Any, report["avg_by_month_number"].df()).to_excel(
+                excel_writer, sheet_name="avg_by_month", index=False
             )
-            report["total_records_per_month"].df().to_excel(
-                writer, sheet_name="records_per_month", index=False
+            cast(Any, report["total_records_per_month"].df()).to_excel(
+                excel_writer, sheet_name="records_per_month", index=False
             )
-            report["avg_records_per_day"].df().to_excel(
-                writer, sheet_name="avg_records_day", index=False
+            cast(Any, report["avg_records_per_day"].df()).to_excel(
+                excel_writer, sheet_name="avg_records_day", index=False
             )
 
         return file_path
