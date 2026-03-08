@@ -7,6 +7,7 @@
 
 ### Architecture
 - [Platform Overview](arch-phase1.md)
+- [Repository Structure](repo-structure.md)
 
 ### ADR (Architecture Decision Records)
 - [ADR-001 Ingestion Model](adr/001-ingestion-model.md)
@@ -16,6 +17,7 @@
 - [ADR-005 Data Governance](adr/005-data-governance.md)
 - [ADR-006 Infrastructure as Code](adr/006-infrastructure.md)
 - [ADR-007 Pipeline State Tracking](adr/007-pipeline.md)
+- [ADR-008 Transformation Layer Implemented with dbt](adr/008-dbt-transformation-layer.md)
 
 ### Discovery Notes
 - [Taxi Dataset Discovery](exploration_notes/data-discovery-taxi.md)

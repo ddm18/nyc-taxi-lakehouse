@@ -74,6 +74,27 @@ Event unit: `dataset-month`.
 | Observability | DQ metrics + operational metadata |
 | Lineage | Unity Catalog lineage |
 
+### Transformation layer with dbt
+
+Production transformations are implemented with dbt.
+
+dbt is used to provide:
+
+- deterministic model execution based on dependencies
+- SQL-first transformation logic tracked in version control
+- built-in tests for data quality validation
+- model contracts and schema documentation
+- generated lineage and documentation for analytical datasets
+
+Transformation models are organized in logical layers:
+
+- `staging`: source normalization and light cleanup
+- `intermediate`: integration and enrichment across datasets
+- `marts`: analytics-ready outputs for consumption
+
+Notebook-based transformation logic is limited to exploration and prototyping.
+When logic becomes production-ready, it must be promoted into dbt models.
+
 ## 5. Data Architecture
 
 ### 5.1 Storage layout

@@ -1,0 +1,211 @@
+version: 2
+
+models:
+  - name: yellow_trips_v1
+    description: Canonical Silver contract for NYC TLC Yellow Taxi trip data.
+    config:
+      materialized: table
+      contract:
+        enforced: true
+      meta:
+        layer: silver
+        domain: nyc_taxi
+        dataset: yellow_trips
+        status: draft
+        owners:
+          - data_engineering
+        grain: one row per taxi trip
+        source:
+          publisher: NYC TLC
+          source_dataset: yellow
+    columns:
+      - name: vendor_id
+        data_type: bigint
+        description: Taxi vendor identifier
+      - name: pickup_ts
+        data_type: timestamp
+        description: Trip pickup timestamp
+        tests:
+          - not_null
+      - name: dropoff_ts
+        data_type: timestamp
+        description: Trip dropoff timestamp
+      - name: passenger_count
+        data_type: double
+        description: Passenger count as published by source
+      - name: trip_distance
+        data_type: double
+        description: Trip distance in miles
+      - name: rate_code_id
+        data_type: double
+        description: Rate code identifier as published by source
+      - name: store_and_fwd_flag
+        data_type: string
+        description: Store and forward flag
+      - name: pu_location_id
+        data_type: bigint
+        description: Pickup location identifier
+      - name: do_location_id
+        data_type: bigint
+        description: Dropoff location identifier
+      - name: payment_type
+        data_type: bigint
+        description: Payment type code
+      - name: fare_amount
+        data_type: double
+        description: Base fare amount
+      - name: extra
+        data_type: double
+        description: Extra charges
+      - name: mta_tax
+        data_type: double
+        description: MTA tax
+      - name: tip_amount
+        data_type: double
+        description: Tip amount
+      - name: tolls_amount
+        data_type: double
+        description: Toll amount
+      - name: improvement_surcharge
+        data_type: double
+        description: Improvement surcharge
+      - name: total_amount
+        data_type: double
+        description: Total charged amount
+      - name: congestion_surcharge
+        data_type: double
+        description: Congestion surcharge
+      - name: airport_fee
+        data_type: double
+        description: Airport fee
+      - name: pickup_year
+        data_type: int
+        description: Year derived from pickup timestamp
+        tests:
+          - not_null
+      - name: pickup_month
+        data_type: int
+        description: Month derived from pickup timestamp
+        tests:
+          - not_null
+      - name: pickup_date
+        data_type: date
+        description: Calendar date derived from pickup timestamp
+        tests:
+          - not_null
+      - name: dow
+        data_type: int
+        description: Day of week derived from pickup timestamp
+        tests:
+          - not_null
+      - name: is_weekend
+        data_type: boolean
+        description: Weekend flag derived from pickup timestamp
+        tests:
+          - not_null
+
+  - name: green_trips_v1
+    description: Canonical Silver contract for NYC TLC Green Taxi trip data.
+    config:
+      materialized: table
+      contract:
+        enforced: true
+      meta:
+        layer: silver
+        domain: nyc_taxi
+        dataset: green_trips
+        status: draft
+        owners:
+          - data_engineering
+        grain: one row per taxi trip
+        source:
+          publisher: NYC TLC
+          source_dataset: green
+    columns:
+      - name: vendor_id
+        data_type: bigint
+        description: Taxi vendor identifier
+      - name: pickup_ts
+        data_type: timestamp
+        description: Trip pickup timestamp
+        tests:
+          - not_null
+      - name: dropoff_ts
+        data_type: timestamp
+        description: Trip dropoff timestamp
+      - name: store_and_fwd_flag
+        data_type: string
+        description: Store and forward flag
+      - name: rate_code_id
+        data_type: double
+        description: Rate code identifier as published by source
+      - name: pu_location_id
+        data_type: bigint
+        description: Pickup location identifier
+      - name: do_location_id
+        data_type: bigint
+        description: Dropoff location identifier
+      - name: passenger_count
+        data_type: double
+        description: Passenger count as published by source
+      - name: trip_distance
+        data_type: double
+        description: Trip distance in miles
+      - name: fare_amount
+        data_type: double
+        description: Base fare amount
+      - name: extra
+        data_type: double
+        description: Extra charges
+      - name: mta_tax
+        data_type: double
+        description: MTA tax
+      - name: tip_amount
+        data_type: double
+        description: Tip amount
+      - name: tolls_amount
+        data_type: double
+        description: Toll amount
+      - name: ehail_fee
+        data_type: double
+        description: E-hail fee
+      - name: improvement_surcharge
+        data_type: double
+        description: Improvement surcharge
+      - name: total_amount
+        data_type: double
+        description: Total charged amount
+      - name: payment_type
+        data_type: double
+        description: Payment type code as published by source
+      - name: trip_type
+        data_type: double
+        description: Trip type code as published by source
+      - name: congestion_surcharge
+        data_type: double
+        description: Congestion surcharge
+      - name: pickup_year
+        data_type: int
+        description: Year derived from pickup timestamp
+        tests:
+          - not_null
+      - name: pickup_month
+        data_type: int
+        description: Month derived from pickup timestamp
+        tests:
+          - not_null
+      - name: pickup_date
+        data_type: date
+        description: Calendar date derived from pickup timestamp
+        tests:
+          - not_null
+      - name: dow
+        data_type: int
+        description: Day of week derived from pickup timestamp
+        tests:
+          - not_null
+      - name: is_weekend
+        data_type: boolean
+        description: Weekend flag derived from pickup timestamp
+        tests:
+          - not_null

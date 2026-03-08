@@ -1,0 +1,15 @@
+phase: 1
+
+quality_tiers:
+  silver:
+    requirements:
+      - documented columns
+      - key tests present
+      - nullability defined
+
+  gold:
+    requirements:
+      - contract enforced
+      - consumer-facing documentation
+      - backward compatibility expected
+      - business key defined
