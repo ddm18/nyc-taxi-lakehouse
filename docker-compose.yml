@@ -1,0 +1,92 @@
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: airflow
+      POSTGRES_PASSWORD: airflow
+      POSTGRES_DB: airflow
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "airflow"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    volumes:
+      - postgres-db-volume:/var/lib/postgresql/data
+
+  airflow-init:
+    build:
+      context: .
+      dockerfile: airflow/Dockerfile
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment: &airflow-env
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+      AIRFLOW__CORE__DAGS_FOLDER: /opt/airflow/dags
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres/airflow
+      AIRFLOW__WEBSERVER__SECRET_KEY: local-dev-secret
+      AIRFLOW__API__AUTH_BACKENDS: airflow.api.auth.backend.session,airflow.api.auth.backend.basic_auth
+      PYTHONPATH: /opt/project
+      AWS_PROFILE: ${AWS_PROFILE:-default}
+      AWS_REGION: ${AWS_REGION:-eu-west-1}
+      AWS_SHARED_CREDENTIALS_FILE: /home/airflow/.aws/credentials
+      AWS_CONFIG_FILE: /home/airflow/.aws/config
+      LAKEHOUSE_S3_ROOT: ${LAKEHOUSE_S3_ROOT:-s3://nyc-data-platform-dev}
+      SPARK_MASTER: ${SPARK_MASTER:-local[*]}
+      SPARK_WAREHOUSE_DIR: ${SPARK_WAREHOUSE_DIR:-s3a://nyc-data-platform-dev/warehouse}
+      SPARK_METASTORE_DIR: ${SPARK_METASTORE_DIR:-/opt/project/.local/spark/metastore_db}
+      SPARK_JARS_PACKAGES: ${SPARK_JARS_PACKAGES:-io.delta:delta-spark_2.12:3.2.0,org.apache.hadoop:hadoop-aws:3.3.4,com.amazonaws:aws-java-sdk-bundle:1.12.262}
+    user: "${AIRFLOW_UID:-50000}:0"
+    volumes:
+      - .:/opt/project
+      - ./airflow/dags:/opt/airflow/dags
+      - ${HOME}/.aws:/home/airflow/.aws:ro
+    command: >
+      bash -lc "airflow db migrate &&
+      airflow users create
+      --role Admin
+      --username airflow
+      --password airflow
+      --firstname Air
+      --lastname Flow
+      --email airflow@example.com"
+
+  airflow-webserver:
+    build:
+      context: .
+      dockerfile: airflow/Dockerfile
+    depends_on:
+      postgres:
+        condition: service_healthy
+      airflow-init:
+        condition: service_completed_successfully
+    environment: *airflow-env
+    user: "${AIRFLOW_UID:-50000}:0"
+    volumes:
+      - .:/opt/project
+      - ./airflow/dags:/opt/airflow/dags
+      - ${HOME}/.aws:/home/airflow/.aws:ro
+    ports:
+      - "8080:8080"
+    command: webserver
+
+  airflow-scheduler:
+    build:
+      context: .
+      dockerfile: airflow/Dockerfile
+    depends_on:
+      postgres:
+        condition: service_healthy
+      airflow-init:
+        condition: service_completed_successfully
+    environment: *airflow-env
+    user: "${AIRFLOW_UID:-50000}:0"
+    volumes:
+      - .:/opt/project
+      - ./airflow/dags:/opt/airflow/dags
+      - ${HOME}/.aws:/home/airflow/.aws:ro
+    command: scheduler
+
+volumes:
+  postgres-db-volume:

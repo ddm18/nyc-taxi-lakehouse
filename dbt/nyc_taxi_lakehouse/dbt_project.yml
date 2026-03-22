@@ -16,5 +16,19 @@ clean-targets:
 
 models:
   nyc_taxi_lakehouse:
+    bronze:
+      +materialized: incremental
+      +schema: bronze
+      +file_format: delta
+      +incremental_strategy: insert_overwrite
+      +partition_by:
+        - source_year
+        - source_month
     silver:
       +materialized: table
+      +schema: silver
+      +file_format: delta
+    gold:
+      +materialized: table
+      +schema: gold
+      +file_format: delta

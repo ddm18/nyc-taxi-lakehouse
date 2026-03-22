@@ -213,3 +213,15 @@ data_dictionary_trip_records_yellow.pdf
 
 trip_record_user_guide.pdf
 .databricks
+
+# Local AI orchestration assets
+/orchestration/ai/
+
+# Local runtime state
+.local/
+/metastore_db/
+
+# Terraform local state
+.terraform/
+*.tfstate
+*.tfstate.*

@@ -1,0 +1,22 @@
+select
+  cast(VendorID as bigint) as vendor_id,
+  cast(lpep_pickup_datetime as timestamp) as pickup_ts,
+  cast(lpep_dropoff_datetime as timestamp) as dropoff_ts,
+  cast(store_and_fwd_flag as string) as store_and_fwd_flag,
+  cast(RatecodeID as double) as rate_code_id,
+  cast(PULocationID as bigint) as pu_location_id,
+  cast(DOLocationID as bigint) as do_location_id,
+  cast(passenger_count as double) as passenger_count,
+  cast(trip_distance as double) as trip_distance,
+  cast(fare_amount as double) as fare_amount,
+  cast(extra as double) as extra,
+  cast(mta_tax as double) as mta_tax,
+  cast(tip_amount as double) as tip_amount,
+  cast(tolls_amount as double) as tolls_amount,
+  cast(ehail_fee as double) as ehail_fee,
+  cast(improvement_surcharge as double) as improvement_surcharge,
+  cast(total_amount as double) as total_amount,
+  cast(payment_type as double) as payment_type,
+  cast(trip_type as double) as trip_type,
+  cast(congestion_surcharge as double) as congestion_surcharge
+from {{ ref('green_tripdata_raw') }}

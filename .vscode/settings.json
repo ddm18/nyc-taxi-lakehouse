@@ -1,7 +1,36 @@
 {
     "conventionalCommits.scopes": [
-        "exploration"
+        "exploration",
+        "infrastructure"
     ],
     "jupyter.interactiveWindow.cellMarker.codeRegex": "^# COMMAND ----------|^# Databricks notebook source|^(#\\s*%%|#\\s*\\<codecell\\>|#\\s*In\\[\\d*?\\]|#\\s*In\\[ \\])",
-    "jupyter.interactiveWindow.cellMarker.default": "# COMMAND ----------"
+    "jupyter.interactiveWindow.cellMarker.default": "# COMMAND ----------",
+    "files.exclude": {
+        "**/.git": true,
+        "**/.svn": true,
+        "**/.hg": true,
+        "**/.DS_Store": true,
+        "**/Thumbs.db": true,
+        "**/.venv": true,
+        ".venv": true,
+        ".local/spark/metastore_db": true,
+        "**/metastore_db": true,
+        ".local/spark/*.*": true,
+        "metastore_db": true,
+        ".local/spark": true,
+        "**/spark": true,
+        ".local/*.*": true,
+        "spark": true,
+        "**/.local": true,
+        ".local": true,
+        "**/site": true,
+        "site": true,
+        "**/typings": true,
+        "typings": true,
+        "**/mkdocs.yml": true,
+        "mkdocs.yml": true,
+        "pyrightconfig.strict.json": true,
+        "**/pyrightconfig.strict.json": true
+    },
+    "explorerExclude.backup": {}
 }

@@ -40,7 +40,7 @@ The objective is a reliable platform foundation.
 
 ## 4. Target Architecture (Logical)
 
-The platform follows a lakehouse model on Databricks.
+The platform follows a layered lakehouse model on AWS-backed S3 with local Spark execution.
 
 `Source -> Landing -> Bronze -> Silver -> Gold`
 
@@ -68,11 +68,11 @@ Event unit: `dataset-month`.
 
 | Capability | Implementation |
 |---|---|
-| Governance | Unity Catalog (catalog/schema/table RBAC) |
-| Orchestration | Databricks Workflows |
+| Governance | Layered schemas, dbt contracts, and repository-managed policy definitions |
+| Orchestration | Airflow DAGs running local Spark + dbt workflows |
 | Data quality | Validation rules in transformations |
 | Observability | DQ metrics + operational metadata |
-| Lineage | Unity Catalog lineage |
+| Lineage | dbt lineage and dependency graph |
 
 ### Transformation layer with dbt
 
@@ -88,9 +88,9 @@ dbt is used to provide:
 
 Transformation models are organized in logical layers:
 
-- `staging`: source normalization and light cleanup
-- `intermediate`: integration and enrichment across datasets
-- `marts`: analytics-ready outputs for consumption
+- `bronze`: raw-to-managed ingestion over Landing files
+- `silver`: source normalization and canonical cleanup
+- `gold`: analytics-ready outputs for consumption
 
 Notebook-based transformation logic is limited to exploration and prototyping.
 When logic becomes production-ready, it must be promoted into dbt models.
@@ -176,8 +176,8 @@ Gold is the primary analytical interface for consumers.
 - `analysts`
 - `viewers`
 
-### 6.2 Unity Catalog structure
-Catalog: `<project>_dev`
+### 6.2 Environment schema structure
+Environment namespace: `<project>_<env>`
 
 Schemas:
 

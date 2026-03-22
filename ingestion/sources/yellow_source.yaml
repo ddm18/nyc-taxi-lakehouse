@@ -25,7 +25,7 @@ retrieval:
 ingestion:
   ingestion_unit: dataset_month
   expected_file_per_unit: 1
-  landing_path_pattern: landing/yellow/year={YYYY}/month={MM}/
+  landing_path_pattern: landing/yellow/year={YYYY}/month={MM}
   landing_file_name: yellow_tripdata_YYYY-MM.parquet
 
 notes:
