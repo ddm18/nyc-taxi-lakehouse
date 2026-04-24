@@ -11,7 +11,7 @@ from airflow.operators.python import get_current_context
 
 from ingestion.shared.dto import DatasetMonthDTO
 
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
+PROJECT_ROOT = Path(os.environ.get("PYTHONPATH", str(Path(__file__).resolve().parents[2])))
 DBT_PROJECT_DIR = PROJECT_ROOT / "dbt" / "nyc_taxi_lakehouse"
 DBT_PROFILES_DIR = PROJECT_ROOT / "dbt" / "profiles"
 

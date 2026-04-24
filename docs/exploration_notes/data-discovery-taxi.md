@@ -26,8 +26,17 @@
     - How large is a typical monthly partition?
     - Is a storage/partition strategy required?
 
-!!! note "Findings"
-    Pending completion.
+!!! success "Findings"
+    Data is served in **Parquet** format via CloudFront CDN (`https://d37ci6vzurychx.cloudfront.net/trip-data/`).
+
+    Validated years (January sampled per year for schema exploration):
+
+    | Service | Available years |
+    |---------|----------------|
+    | Yellow  | 2013 – 2023    |
+    | Green   | 2014 – 2023    |
+
+    These are the years in scope for ingestion. No other years will be processed.
 
 ## 2. Schema Validation
 
