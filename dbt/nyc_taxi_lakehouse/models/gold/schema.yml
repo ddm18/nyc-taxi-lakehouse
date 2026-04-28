@@ -2,7 +2,7 @@ version: 2
 
 models:
   - name: yellow_trips_v1
-    description: Canonical Gold contract for NYC TLC Yellow Taxi trip data.
+    description: Canonical Gold contract for NYC TLC Yellow Taxi trip data enriched for operational analysis.
     config:
       materialized: table
       contract:
@@ -11,7 +11,7 @@ models:
         layer: gold
         domain: nyc_taxi
         dataset: yellow_trips
-        status: draft
+        status: active
         owners:
           - data_engineering
         grain: one row per taxi trip
@@ -19,6 +19,21 @@ models:
           publisher: NYC TLC
           source_dataset: yellow
     columns:
+      - name: service_type
+        data_type: string
+        tests:
+          - accepted_values:
+              values: ['yellow']
+      - name: source_year
+        data_type: int
+      - name: source_month
+        data_type: int
+      - name: dataset_month
+        data_type: string
+      - name: source_file
+        data_type: string
+      - name: ingested_at
+        data_type: timestamp
       - name: vendor_id
         data_type: bigint
       - name: pickup_ts
@@ -37,8 +52,36 @@ models:
         data_type: string
       - name: pu_location_id
         data_type: bigint
+        tests:
+          - relationships:
+              to: ref('dim_taxi_zones_v1')
+              field: location_id
       - name: do_location_id
         data_type: bigint
+        tests:
+          - relationships:
+              to: ref('dim_taxi_zones_v1')
+              field: location_id
+      - name: pu_zone_name
+        data_type: string
+      - name: do_zone_name
+        data_type: string
+      - name: pu_borough
+        data_type: string
+      - name: do_borough
+        data_type: string
+      - name: pu_service_zone
+        data_type: string
+      - name: do_service_zone
+        data_type: string
+      - name: pu_is_airport_zone
+        data_type: boolean
+      - name: do_is_airport_zone
+        data_type: boolean
+      - name: has_unmapped_pu_zone
+        data_type: boolean
+      - name: has_unmapped_do_zone
+        data_type: boolean
       - name: payment_type
         data_type: bigint
       - name: fare_amount
@@ -71,6 +114,14 @@ models:
         data_type: date
         tests:
           - not_null
+      - name: pickup_hour
+        data_type: int
+      - name: pickup_week
+        data_type: int
+      - name: pickup_quarter
+        data_type: int
+      - name: season_name
+        data_type: string
       - name: dow
         data_type: int
         tests:
@@ -79,9 +130,57 @@ models:
         data_type: boolean
         tests:
           - not_null
+      - name: day_part
+        data_type: string
+      - name: is_peak_commute
+        data_type: boolean
+      - name: trip_duration_minutes
+        data_type: double
+      - name: avg_speed_mph
+        data_type: double
+      - name: fare_per_mile
+        data_type: double
+      - name: tip_pct
+        data_type: double
+      - name: has_airport_fee
+        data_type: boolean
+      - name: has_congestion_surcharge
+        data_type: boolean
+      - name: is_airport_trip
+        data_type: boolean
+      - name: is_intra_borough_trip
+        data_type: boolean
+      - name: is_inter_borough_trip
+        data_type: boolean
+      - name: is_zero_tip
+        data_type: boolean
+      - name: is_zero_distance
+        data_type: boolean
+      - name: has_implausible_fare
+        data_type: boolean
+      - name: is_valid_duration
+        data_type: boolean
+      - name: is_valid_distance
+        data_type: boolean
+      - name: is_valid_total_amount
+        data_type: boolean
+      - name: is_outlier_trip_duration
+        data_type: boolean
+      - name: is_outlier_trip_distance
+        data_type: boolean
+      - name: is_outlier_total_amount
+        data_type: boolean
+      - name: is_valid_trip
+        data_type: boolean
+        tests:
+          - not_null
+      - name: dq_warning_count
+        data_type: int
+        tests:
+          - not_null
 
   - name: green_trips_v1
-    description: Canonical Gold contract for NYC TLC Green Taxi trip data.
+    description: Canonical Gold contract for NYC TLC Green Taxi trip data enriched for operational analysis.
     config:
       materialized: table
       contract:
@@ -90,7 +189,7 @@ models:
         layer: gold
         domain: nyc_taxi
         dataset: green_trips
-        status: draft
+        status: active
         owners:
           - data_engineering
         grain: one row per taxi trip
@@ -98,6 +197,21 @@ models:
           publisher: NYC TLC
           source_dataset: green
     columns:
+      - name: service_type
+        data_type: string
+        tests:
+          - accepted_values:
+              values: ['green']
+      - name: source_year
+        data_type: int
+      - name: source_month
+        data_type: int
+      - name: dataset_month
+        data_type: string
+      - name: source_file
+        data_type: string
+      - name: ingested_at
+        data_type: timestamp
       - name: vendor_id
         data_type: bigint
       - name: pickup_ts
@@ -112,8 +226,36 @@ models:
         data_type: double
       - name: pu_location_id
         data_type: bigint
+        tests:
+          - relationships:
+              to: ref('dim_taxi_zones_v1')
+              field: location_id
       - name: do_location_id
         data_type: bigint
+        tests:
+          - relationships:
+              to: ref('dim_taxi_zones_v1')
+              field: location_id
+      - name: pu_zone_name
+        data_type: string
+      - name: do_zone_name
+        data_type: string
+      - name: pu_borough
+        data_type: string
+      - name: do_borough
+        data_type: string
+      - name: pu_service_zone
+        data_type: string
+      - name: do_service_zone
+        data_type: string
+      - name: pu_is_airport_zone
+        data_type: boolean
+      - name: do_is_airport_zone
+        data_type: boolean
+      - name: has_unmapped_pu_zone
+        data_type: boolean
+      - name: has_unmapped_do_zone
+        data_type: boolean
       - name: passenger_count
         data_type: double
       - name: trip_distance
@@ -152,11 +294,149 @@ models:
         data_type: date
         tests:
           - not_null
+      - name: pickup_hour
+        data_type: int
+      - name: pickup_week
+        data_type: int
+      - name: pickup_quarter
+        data_type: int
+      - name: season_name
+        data_type: string
       - name: dow
         data_type: int
         tests:
           - not_null
       - name: is_weekend
         data_type: boolean
+        tests:
+          - not_null
+      - name: day_part
+        data_type: string
+      - name: is_peak_commute
+        data_type: boolean
+      - name: trip_duration_minutes
+        data_type: double
+      - name: avg_speed_mph
+        data_type: double
+      - name: fare_per_mile
+        data_type: double
+      - name: tip_pct
+        data_type: double
+      - name: has_airport_fee
+        data_type: boolean
+      - name: has_congestion_surcharge
+        data_type: boolean
+      - name: is_airport_trip
+        data_type: boolean
+      - name: is_intra_borough_trip
+        data_type: boolean
+      - name: is_inter_borough_trip
+        data_type: boolean
+      - name: is_zero_tip
+        data_type: boolean
+      - name: is_zero_distance
+        data_type: boolean
+      - name: has_implausible_fare
+        data_type: boolean
+      - name: is_valid_duration
+        data_type: boolean
+      - name: is_valid_distance
+        data_type: boolean
+      - name: is_valid_total_amount
+        data_type: boolean
+      - name: is_outlier_trip_duration
+        data_type: boolean
+      - name: is_outlier_trip_distance
+        data_type: boolean
+      - name: is_outlier_total_amount
+        data_type: boolean
+      - name: is_valid_trip
+        data_type: boolean
+        tests:
+          - not_null
+      - name: dq_warning_count
+        data_type: int
+        tests:
+          - not_null
+
+  - name: trips_v1
+    description: Unified Gold trip-level dataset across Yellow and Green TLC services.
+    columns:
+      - name: service_type
+        tests:
+          - not_null
+      - name: pickup_ts
+        tests:
+          - not_null
+      - name: pickup_date
+        tests:
+          - not_null
+
+  - name: yellow_daily_metrics_v1
+    description: Daily operational metrics for Yellow Taxi trips.
+    columns:
+      - name: pickup_date
+        tests:
+          - not_null
+      - name: trip_count
+        tests:
+          - not_null
+
+  - name: green_daily_metrics_v1
+    description: Daily operational metrics for Green Taxi trips.
+    columns:
+      - name: pickup_date
+        tests:
+          - not_null
+      - name: trip_count
+        tests:
+          - not_null
+
+  - name: daily_metrics_v1
+    description: Unified daily operational metrics across Yellow and Green TLC services.
+    columns:
+      - name: pickup_date
+        tests:
+          - not_null
+      - name: trip_count
+        tests:
+          - not_null
+
+  - name: yellow_hourly_zone_metrics_v1
+    description: Hourly zone-level metrics for Yellow Taxi trips.
+    columns:
+      - name: pickup_date
+        tests:
+          - not_null
+      - name: pickup_hour
+        tests:
+          - not_null
+      - name: pu_location_id
+        tests:
+          - not_null
+
+  - name: green_hourly_zone_metrics_v1
+    description: Hourly zone-level metrics for Green Taxi trips.
+    columns:
+      - name: pickup_date
+        tests:
+          - not_null
+      - name: pickup_hour
+        tests:
+          - not_null
+      - name: pu_location_id
+        tests:
+          - not_null
+
+  - name: hourly_zone_metrics_v1
+    description: Unified hourly zone-level metrics across Yellow and Green TLC services.
+    columns:
+      - name: pickup_date
+        tests:
+          - not_null
+      - name: pickup_hour
+        tests:
+          - not_null
+      - name: pu_location_id
         tests:
           - not_null

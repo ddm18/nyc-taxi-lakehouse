@@ -25,10 +25,26 @@ models:
         - source_year
         - source_month
     silver:
-      +materialized: table
+      +materialized: incremental
       +schema: silver
       +file_format: delta
+      +incremental_strategy: insert_overwrite
+      +partition_by:
+        - source_year
+        - source_month
     gold:
       +materialized: table
       +schema: gold
+      +file_format: delta
+    ops:
+      +materialized: incremental
+      +schema: ops
+      +file_format: delta
+      +incremental_strategy: insert_overwrite
+      +partition_by:
+        - metric_year
+        - metric_month
+    quarantine:
+      +materialized: table
+      +schema: quarantine
       +file_format: delta

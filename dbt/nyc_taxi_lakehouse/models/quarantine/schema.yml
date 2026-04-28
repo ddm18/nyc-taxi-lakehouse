@@ -1,0 +1,21 @@
+version: 2
+
+models:
+  - name: trip_anomalies_v1
+    description: Quarantine dataset for invalid or anomalous taxi trips requiring operational review.
+    columns:
+      - name: service_type
+        tests:
+          - not_null
+      - name: dataset_month
+        tests:
+          - not_null
+      - name: pickup_ts
+        tests:
+          - not_null
+      - name: quarantine_reason
+        tests:
+          - not_null
+      - name: quarantined_at
+        tests:
+          - not_null

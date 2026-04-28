@@ -4,6 +4,17 @@
   {{ return(year_value ~ "-" ~ "{:02d}".format(month_value)) }}
 {%- endmacro %}
 
+{% macro lakehouse_root() -%}
+  {% set explicit_root = env_var('LAKEHOUSE_ROOT', '') | trim %}
+  {% if explicit_root %}
+    {{ return(explicit_root.rstrip('/')) }}
+  {% endif %}
+
+  {% set bucket_uri = env_var('LAKEHOUSE_BUCKET_URI', 's3://nyc-data-platform-test') | trim %}
+  {% set environment = env_var('LAKEHOUSE_ENV', 'test') | trim('/') %}
+  {{ return(bucket_uri.rstrip('/') ~ '/' ~ environment) }}
+{%- endmacro %}
+
 {% macro spark_compatible_uri(uri) -%}
   {% set normalized_uri = uri | trim %}
   {% if normalized_uri.startswith('s3://') %}
@@ -18,12 +29,12 @@
     {{ exceptions.raise_compiler_error("Unsupported service: " ~ service_name) }}
   {% endif %}
 
-  {% set root = var('landing_root', env_var('LAKEHOUSE_S3_ROOT', 's3://nyc-data-platform-dev')) | trim %}
+  {% set root = var('landing_root', '') | trim %}
   {% set dataset_month = dataset_month_value() %}
   {% set year_value = var('year') | int %}
   {% set month_value = var('month') | int %}
   {% set month_token = "{:02d}".format(month_value) %}
-  {% set normalized_root = spark_compatible_uri(root).rstrip('/') %}
+  {% set normalized_root = spark_compatible_uri(root if root else lakehouse_root()).rstrip('/') %}
 
   {{ return(
       normalized_root
@@ -38,5 +49,17 @@
       ~ "_tripdata_"
       ~ dataset_month
       ~ ".parquet"
+  ) }}
+{%- endmacro %}
+
+{% macro reference_landing_path(reference_name, file_name) -%}
+  {% set root = var('landing_root', '') | trim %}
+  {% set normalized_root = spark_compatible_uri(root if root else lakehouse_root()).rstrip('/') %}
+  {{ return(
+      normalized_root
+      ~ "/landing/reference/"
+      ~ reference_name
+      ~ "/"
+      ~ file_name
   ) }}
 {%- endmacro %}

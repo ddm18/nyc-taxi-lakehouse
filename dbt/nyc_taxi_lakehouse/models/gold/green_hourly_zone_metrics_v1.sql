@@ -1,0 +1,33 @@
+select
+  cast(service_type as string) as service_type,
+  cast(pickup_year as int) as pickup_year,
+  cast(pickup_month as int) as pickup_month,
+  cast(pickup_date as date) as pickup_date,
+  cast(pickup_hour as int) as pickup_hour,
+  cast(pu_location_id as bigint) as pu_location_id,
+  cast(pu_zone_name as string) as pu_zone_name,
+  cast(pu_borough as string) as pu_borough,
+  cast(pu_service_zone as string) as pu_service_zone,
+  cast(pu_is_airport_zone as boolean) as pu_is_airport_zone,
+  cast(count(*) as bigint) as trip_count,
+  cast(sum(total_amount) as double) as total_amount_sum,
+  cast(avg(total_amount) as double) as avg_total_amount,
+  cast(percentile_approx(total_amount, 0.5) as double) as median_total_amount,
+  cast(avg(trip_distance) as double) as avg_trip_distance,
+  cast(avg(case when is_valid_duration then trip_duration_minutes end) as double) as avg_trip_duration_minutes,
+  cast(avg(case when avg_speed_mph is not null then avg_speed_mph end) as double) as avg_speed_mph,
+  cast(avg(case when is_valid_trip then 0.0 else 1.0 end) as double) as invalid_trip_rate,
+  cast(avg(case when is_zero_tip then 1.0 else 0.0 end) as double) as zero_tip_rate,
+  cast(avg(case when has_implausible_fare then 1.0 else 0.0 end) as double) as implausible_fare_rate
+from {{ ref('green_trips_v1') }}
+group by
+  service_type,
+  pickup_year,
+  pickup_month,
+  pickup_date,
+  pickup_hour,
+  pu_location_id,
+  pu_zone_name,
+  pu_borough,
+  pu_service_zone,
+  pu_is_airport_zone
