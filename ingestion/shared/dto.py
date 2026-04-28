@@ -31,3 +31,8 @@ class LandingObjectSummaryDTO:
     landing_uri: str
     dataset_month: str
     source_url: str
+    source_etag: str | None = None
+    source_last_modified: str | None = None
+    source_content_length: int | None = None
+    source_metadata_uri: str | None = None
+    source_metadata_changed: bool | None = None
