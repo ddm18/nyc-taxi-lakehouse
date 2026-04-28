@@ -40,7 +40,7 @@ services:
       TRANSFORMATION_VERSION: ${TRANSFORMATION_VERSION:-local-dev}
       SPARK_MASTER: ${SPARK_MASTER:-local[*]}
       SPARK_WAREHOUSE_DIR: ${SPARK_WAREHOUSE_DIR:-s3a://nyc-data-platform-test/test/warehouse}
-      SPARK_METASTORE_DIR: ${SPARK_METASTORE_DIR:-/opt/project/.local/spark/metastore_db}
+      SPARK_METASTORE_DIR: ${SPARK_METASTORE_DIR:-/opt/project/.local/spark/test/metastore_db}
       SPARK_JARS_PACKAGES: ${SPARK_JARS_PACKAGES:-io.delta:delta-spark_2.12:3.2.0,org.apache.hadoop:hadoop-aws:3.3.4,com.amazonaws:aws-java-sdk-bundle:1.12.262}
     user: "${AIRFLOW_UID:-50000}:0"
     volumes:

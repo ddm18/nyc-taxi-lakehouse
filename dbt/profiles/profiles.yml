@@ -13,7 +13,7 @@ nyc_taxi_lakehouse:
         spark.sql.extensions: io.delta.sql.DeltaSparkSessionExtension
         spark.sql.catalog.spark_catalog: org.apache.spark.sql.delta.catalog.DeltaCatalog
         spark.sql.warehouse.dir: "{{ env_var('SPARK_WAREHOUSE_DIR', '/opt/project/.local/spark/warehouse') }}"
-        javax.jdo.option.ConnectionURL: "jdbc:derby:;databaseName={{ env_var('SPARK_METASTORE_DIR', '/opt/project/.local/spark/metastore_db') }};create=true"
+        javax.jdo.option.ConnectionURL: "jdbc:derby:;databaseName={{ env_var('SPARK_METASTORE_DIR', '/opt/project/.local/spark/test/metastore_db') }};create=true"
         spark.jars.packages: "{{ env_var('SPARK_JARS_PACKAGES', 'io.delta:delta-spark_2.12:3.2.0,org.apache.hadoop:hadoop-aws:3.3.4,com.amazonaws:aws-java-sdk-bundle:1.12.262') }}"
         spark.hadoop.fs.s3a.impl: org.apache.hadoop.fs.s3a.S3AFileSystem
         spark.hadoop.fs.s3a.aws.credentials.provider: com.amazonaws.auth.profile.ProfileCredentialsProvider,com.amazonaws.auth.DefaultAWSCredentialsProviderChain

@@ -89,6 +89,18 @@ def _dbt_vars(config: dict[str, Any]) -> str:
 
 
 def _dbt_command(stage: str, config: dict[str, Any] | None = None) -> list[str]:
+    if stage == "reference_bronze":
+        return [
+            "dbt",
+            "run",
+            "--project-dir",
+            str(DBT_PROJECT_DIR),
+            "--profiles-dir",
+            str(DBT_PROFILES_DIR),
+            "--select",
+            "taxi_zone_lookup_raw",
+        ]
+
     if stage == "gold_unified":
         return [
             "dbt",
@@ -331,6 +343,11 @@ def nyc_taxi_pipeline():
             )
             source_path = Path(reference_file["source_path"])
             write_text(destination_uri, source_path.read_text(encoding="utf-8"))
+
+        env = os.environ.copy()
+        env["DBT_PROFILES_DIR"] = str(DBT_PROFILES_DIR)
+        env["TRANSFORMATION_VERSION"] = _transformation_version()
+        _run_command(_dbt_command("reference_bronze"), env=env)
 
         return landing_root
 

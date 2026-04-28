@@ -1,3 +1,10 @@
+{{
+  config(
+    materialized="table",
+    partition_by=none
+  )
+}}
+
 select
   cast(LocationID as bigint) as location_id,
   cast(Borough as string) as borough,
