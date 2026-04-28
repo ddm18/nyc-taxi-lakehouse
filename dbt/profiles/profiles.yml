@@ -1,7 +1,7 @@
 nyc_taxi_lakehouse:
-  target: dev
+  target: local
   outputs:
-    dev:
+    local:
       type: spark
       method: session
       host: localhost
