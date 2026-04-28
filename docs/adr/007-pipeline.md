@@ -12,7 +12,7 @@ A persistent ledger is needed to track stage-level completion.
 
 Introduce processing-state tracking in operational metadata.
 
-Ledger table example: `ops.pipeline_state`.
+Logical ledger dataset example: `ops.pipeline_state`.
 
 Tracked stages:
 

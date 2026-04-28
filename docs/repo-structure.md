@@ -31,6 +31,7 @@ This document describes the current repository layout and what belongs in each s
 - `ingestion/sources/`: source-level metadata and ingestion declarations.
 - `ingestion/`: Landing ingestion code and shared ingestion helpers.
 - `dbt/nyc_taxi_lakehouse/`: dbt project implementing transformation logic.
+- `dbt/nyc_taxi_lakehouse/models/quarantine/`: exception datasets derived from quality rules.
 
 ## Governance section (`governance/`)
 
@@ -40,7 +41,7 @@ This document describes the current repository layout and what belongs in each s
 
 ## Infra and orchestration
 
-- `infra/terraform/`: infrastructure provisioning code.
+- `infra/terraform/`: infrastructure provisioning code for deployed `test` and `prod` environments.
 - `airflow/`: Airflow runtime files and DAG definitions.
 - `orchestration/ai/`: local AI orchestration code, config, and agent specs.
 

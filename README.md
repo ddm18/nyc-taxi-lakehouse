@@ -56,6 +56,9 @@ Stakeholders want to:
 - Identify peak congestion periods
 - Monitor short-term demand changes
 - Compare weekday vs weekend demand
+- Monitor daily trip counts, valid trip counts, and invalid trip rates
+- Compare hourly pickup demand by TLC taxi zone
+- Track average fare, trip distance, trip duration, tip rate, and speed over time
 - Evaluate whether weather conditions influence trip volume and pricing
 - Analyze airport-related mobility patterns
 
@@ -92,8 +95,8 @@ Stakeholders want to:
 
 - Taxi zones (official TLC zones)
 - Borough
-- Business-defined behavioral clusters
 - Airport vs non-airport zones
+- Optional business-defined behavioral clusters derived from official TLC zones
 
 ### Trip Characteristics
 
@@ -123,35 +126,33 @@ Stakeholders want to:
 
 ### 5.1 Geographical Interpretation
 
-From a behavioral perspective, NYC can be grouped into:
+Phase 1 geographical analysis is anchored on official NYC TLC Taxi Zones.
+These are the native geographical keys available in the trip source through
+pickup and dropoff `LocationID` values.
 
-#### Business Districts
-- Midtown
-- Financial District
-- Downtown Manhattan
+Primary geographical levels:
 
-#### Residential Zones
-- Upper East Side
-- Upper West Side
-- Brooklyn residential districts
+- TLC Taxi Zone
+- Borough
+- Airport vs non-airport zone
 
-#### Nightlife & Entertainment Areas
-- Lower Manhattan
-- Williamsburg
-- SoHo
-- Meatpacking District
+Examples of valid analytical rollups:
 
-#### Airport Zones
-- JFK
-- LaGuardia
-- Newark
+- Borough-level comparisons
+- Airport pickup/dropoff monitoring
+- Zone-to-zone demand comparisons
+- Hourly pickup demand by zone
 
-#### Commuter Corridors
-- Manhattan ↔ Brooklyn
-- Manhattan ↔ Queens
-- Borough-to-borough interconnections
+Business-defined clusters may still be useful for interpretation, but they must
+be implemented as a semantic mapping on top of TLC zones rather than treated as
+native source geography.
 
-These clusters represent **behavioral groupings**, not strict administrative boundaries.
+Examples of optional semantic rollups:
+
+- Business districts
+- Residential clusters
+- Nightlife clusters
+- Commuter corridors
 
 ---
 
@@ -216,6 +217,37 @@ must be formalized in the semantic layer.
 - One row per trip
 - Base grain: trip-level
 - Surrogate keys referencing dimensions
+
+### Gold Analytical Outputs
+
+Phase 1 Gold datasets expose both trip-level and aggregated analytical outputs:
+
+- `Fact_Trips`: analytics-ready trip-level dataset
+- `Daily_Metrics`: day-level operational metrics by service
+- `Hourly_Zone_Metrics`: pickup hour x pickup zone metrics by service
+
+Representative daily metrics include:
+
+- trip count
+- valid trip count
+- weekend trip count
+- invalid trip rate
+- total fare amount
+- average fare amount
+- average trip distance
+- average trip duration
+- average speed
+- average tip percentage
+
+Representative hourly zone metrics include:
+
+- trip count
+- total fare amount
+- average fare amount
+- average trip distance
+- average trip duration
+- average speed
+- invalid trip rate
 
 ### Dimension Tables
 

@@ -1,35 +1,64 @@
 # dbt Project
 
-This dbt project is prepared for the future Bronze -> Silver path.
+This dbt project implements the transformation path for the current TLC
+pipeline:
 
-## Target flow
+`bronze -> silver -> gold -> ops/quarantine`
 
-- `source('bronze', 'yellow_tripdata_raw')`
-- `source('bronze', 'green_tripdata_raw')`
-- `stg_yellow_tripdata`
-- `stg_green_tripdata`
+## Layer Overview
+
+- `bronze`: raw monthly landing files registered as Delta-backed datasets
+- `silver`: canonical typed models with time enrichments and DQ flags
+- `gold`: analytics-ready fact and aggregate models for trend analysis
+- `ops`: partition-level DQ metrics derived from Silver
+- `quarantine`: row-level exception datasets for high-signal anomalies
+
+Reference data path:
+
+- `taxi_zone_lookup_raw`
+- `dim_taxi_zones_v1`
+
+## Service-specific Build Path
+
+Yellow:
+
+- `yellow_tripdata_raw`
+- `yellow_tripdata_silver`
+- `yellow_tripdata_dq_metrics_v1`
 - `yellow_trips_v1`
+- `yellow_daily_metrics_v1`
+- `yellow_hourly_zone_metrics_v1`
+
+Green:
+
+- `green_tripdata_raw`
+- `green_tripdata_silver`
+- `green_tripdata_dq_metrics_v1`
 - `green_trips_v1`
+- `green_daily_metrics_v1`
+- `green_hourly_zone_metrics_v1`
 
-## Current repo state
+Unified Gold:
 
-- ingestion currently stops at Landing
-- Bronze loading/registration is still pending
-- the dbt models below remain ready for when Bronze exists:
-  - `models/staging/_sources.yml`
-  - `stg_yellow_tripdata`
-  - `stg_green_tripdata`
-  - `yellow_trips_v1`
-  - `green_trips_v1`
+- `trips_v1`
+- `daily_metrics_v1`
+- `hourly_zone_metrics_v1`
 
-## Typical dev commands
+## Typical Dev Commands
 
 ```bash
-.venv/bin/dbt parse --project-dir dbt/nyc_taxi_lakehouse
+dbt build --project-dir dbt/nyc_taxi_lakehouse \
+  --profiles-dir dbt/profiles \
+  --select yellow_trips_v1+
 ```
 
-Only `dbt parse` is expected to work end-to-end right now. Before `dbt run`,
-implement Bronze and register the raw tables as:
+```bash
+dbt build --project-dir dbt/nyc_taxi_lakehouse \
+  --profiles-dir dbt/profiles \
+  --select green_trips_v1+
+```
 
-- `bronze.yellow_tripdata_raw`
-- `bronze.green_tripdata_raw`
+The Airflow DAG runs Bronze, Silver, and Gold in separate stages so stage
+success can be tracked in `ops/pipeline_state/`.
+The DAG also stages official TLC taxi zone reference data into Landing before
+dbt consumes it through Bronze and Silver.
