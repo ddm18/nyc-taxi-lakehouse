@@ -1,0 +1,54 @@
+name: Deploy Test
+
+on:
+  workflow_run:
+    workflows:
+      - CI
+    types:
+      - completed
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: deploy-test
+  cancel-in-progress: true
+
+jobs:
+  prepare:
+    if: github.event.workflow_run.event == 'push' && github.event.workflow_run.head_branch == 'main' && github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    outputs:
+      commit_sha: ${{ steps.metadata.outputs.commit_sha }}
+      ci_run_id: ${{ steps.metadata.outputs.ci_run_id }}
+      deploy_relevant: ${{ steps.metadata.outputs.deploy_relevant }}
+    steps:
+      - name: Download CI metadata artifact
+        uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          run-id: ${{ github.event.workflow_run.id }}
+          name: cicd-metadata
+          path: .ci-input/cicd-metadata
+
+      - name: Parse CI metadata
+        id: metadata
+        run: |
+          METADATA_FILE=.ci-input/cicd-metadata/cicd-metadata.json
+          jq -e --arg head_sha "${{ github.event.workflow_run.head_sha }}" '.commit_sha == $head_sha' "${METADATA_FILE}" >/dev/null
+          {
+            echo "commit_sha=$(jq -r '.commit_sha' "${METADATA_FILE}")"
+            echo "ci_run_id=$(jq -r '.ci_run_id' "${METADATA_FILE}")"
+            echo "deploy_relevant=$(jq -r '.deploy_relevant' "${METADATA_FILE}")"
+          } >> "$GITHUB_OUTPUT"
+
+  deploy:
+    needs: prepare
+    if: needs.prepare.outputs.deploy_relevant == 'true'
+    uses: ./.github/workflows/deploy-test.yml
+    with:
+      commit_sha: ${{ needs.prepare.outputs.commit_sha }}
+      ci_run_id: ${{ needs.prepare.outputs.ci_run_id }}
+      deploy_reason: automatic_main_push
+    secrets: inherit

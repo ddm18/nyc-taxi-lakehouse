@@ -6,6 +6,8 @@ from pathlib import Path
 from unittest import mock
 
 from ingestion.shared.runtime_config import (
+    DEFAULT_LAKEHOUSE_BUCKET_URI,
+    DEFAULT_LAKEHOUSE_ENV,
     build_lakehouse_root,
     get_transformation_version_from_env,
 )
@@ -33,11 +35,16 @@ class RuntimeConfigTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             actual = build_lakehouse_root(
                 bucket_uri=tmpdir,
-                environment="test",
+                environment="local",
             )
 
-            expected = Path(tmpdir).resolve() / "test"
+            expected = Path(tmpdir).resolve() / "local"
             self.assertEqual(actual, str(expected))
+
+    def test_defaults_resolve_to_local_filesystem_lakehouse(self) -> None:
+        actual = build_lakehouse_root()
+        expected = Path(DEFAULT_LAKEHOUSE_BUCKET_URI).resolve() / DEFAULT_LAKEHOUSE_ENV
+        self.assertEqual(actual, str(expected))
 
     def test_transformation_version_comes_from_env(self) -> None:
         with mock.patch.dict("os.environ", {"TRANSFORMATION_VERSION": "abc123"}, clear=False):

@@ -10,13 +10,18 @@ Landing path. The operational DAG then continues with:
 
 `Landing -> Bronze -> Silver -> Gold`
 
-The default lakehouse convention is:
+The canonical lakehouse convention is:
 
 `s3://<lakehouse-bucket>/<env>/`
 
-For local runtime, the repo defaults to the shared `test` lakehouse namespace:
+For local runtime, the repo now defaults to a filesystem-backed lakehouse root:
 
-`s3://nyc-data-platform-test/test`
+`<repo>/.local/lakehouse/local`
+
+Deployed `test` and `prod` environments still follow the shared convention:
+
+- `s3://nyc-data-platform-test/test`
+- `s3://nyc-data-platform-prod/prod`
 
 ## Standalone CLI
 
@@ -41,7 +46,7 @@ The ingestion and DAG runtime resolve the lakehouse root with this precedence:
 
 1. `LAKEHOUSE_ROOT`
 2. `LAKEHOUSE_BUCKET_URI` + `LAKEHOUSE_ENV`
-3. default `s3://nyc-data-platform-test/test`
+3. default local filesystem root under `.local/lakehouse/local`
 
 The transformation version is resolved independently through:
 

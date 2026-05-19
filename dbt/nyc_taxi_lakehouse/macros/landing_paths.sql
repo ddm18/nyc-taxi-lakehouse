@@ -10,8 +10,8 @@
     {{ return(explicit_root.rstrip('/')) }}
   {% endif %}
 
-  {% set bucket_uri = env_var('LAKEHOUSE_BUCKET_URI', 's3://nyc-data-platform-test') | trim %}
-  {% set environment = env_var('LAKEHOUSE_ENV', 'test') | trim('/') %}
+  {% set bucket_uri = env_var('LAKEHOUSE_BUCKET_URI', '/opt/project/.local/lakehouse') | trim %}
+  {% set environment = env_var('LAKEHOUSE_ENV', 'local') | trim('/') %}
   {{ return(bucket_uri.rstrip('/') ~ '/' ~ environment) }}
 {%- endmacro %}
 

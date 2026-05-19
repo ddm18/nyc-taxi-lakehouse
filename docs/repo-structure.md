@@ -11,9 +11,11 @@ This document describes the current repository layout and what belongs in each s
 | `ingestion/` | Source ingestion configuration and Landing code | Source descriptors, Landing ingestion logic, raw ingestion config |
 | `dbt/` | Transformation project(s) | dbt models, schema contracts, tests, macros, dbt config |
 | `airflow/` | Airflow runtime | Airflow image files, Python dependencies, DAG definitions |
+| `.github/` | CI/CD automation | GitHub Actions workflows for validation and controlled deployments |
+| `scripts/` | Operator wrappers | Bash helpers for release tagging and manual workflow dispatch |
 | `governance/` | Policy definitions | Retention, quality tiers, governance rules |
 | `infra/` | Infrastructure as code | Terraform modules and environment-specific infra code |
-| `orchestration/` | Local orchestration helpers | Auxiliary local orchestration code not part of the data pipeline runtime |
+| `orchestration/` | Orchestration support code | Cloud control-plane helpers, ECS task runners, and auxiliary orchestration logic |
 | `exploration/` | Analysis sandbox | Notebooks and helper utilities for data exploration |
 | `logs/` | Local execution logs | Tool logs (for example `dbt.log`) used for debugging |
 | `typings/` | Static analysis typing helpers | Stub files used by type-checking tools |
@@ -22,7 +24,7 @@ This document describes the current repository layout and what belongs in each s
 ## Documentation section (`docs/`)
 
 - `docs/index.md`: documentation landing page.
-- `docs/arch-phase1.md`: architecture baseline for Phase 1.
+- `docs/architecture/`: primary architecture narrative, diagrams, and environment model.
 - `docs/adr/`: architecture decision records in numeric order.
 - `docs/exploration_notes/`: evidence collected during source analysis.
 
@@ -41,9 +43,12 @@ This document describes the current repository layout and what belongs in each s
 
 ## Infra and orchestration
 
-- `infra/terraform/`: infrastructure provisioning code for deployed `test` and `prod` environments.
+- `infra/terraform/bootstrap/`: shared prerequisite stacks such as Terraform state, persistent storage buckets, and bootstrap ECR repositories.
+- `scripts/`: terminal wrappers for CI/CD operations, release tagging, runtime deployment, and test validation execution.
+- `infra/terraform/envs/`: environment-scoped runtime stacks for deployed `test` and `prod` validation environments.
+- `infra/terraform/modules/`: reusable Terraform building blocks consumed by both bootstrap and environment stacks.
 - `airflow/`: Airflow runtime files and DAG definitions.
-- `orchestration/ai/`: local AI orchestration code, config, and agent specs.
+- `orchestration/cloud/`: ECS task runner, MWAA control-plane Lambda code, and audit schema for the cloud validation slice.
 
 ## Conventions
 

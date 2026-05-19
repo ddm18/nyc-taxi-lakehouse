@@ -18,9 +18,11 @@ theme:
   icon:
     repo: fontawesome/brands/github
 
+extra_css:
+  - stylesheets/extra.css
+
 plugins:
   - search
-  - mermaid2
   - awesome-pages
   - git-revision-date-localized:
       enable_creation_date: true
@@ -28,9 +30,14 @@ plugins:
       minify_html: true
 
 nav:
+  - Home: index.md
   - Architecture:
-      - Overview: index.md
-      - Phase 1: arch-phase1.md
+      - System Overview: architecture/overview.md
+      - Platform Components: architecture/components.md
+      - Pipeline Execution: architecture/pipeline-execution.md
+      - Deployment Topology: architecture/deployment-topology.md
+      - Environment Model: architecture/environment-model.md
+      - CI/CD Workflow: architecture/cicd.md
       - Repository Structure: repo-structure.md
 
   - ADR:
@@ -42,6 +49,13 @@ nav:
       - 006 Infrastructure: adr/006-infrastructure.md
       - 007 Pipeline: adr/007-pipeline.md
       - 008 Transformation Layer: adr/008-dbt-transformation-layer.md
+      - 009 Environment Topology: adr/009-environment-topology.md
+      - 010 Reference Data and Geography: adr/010-reference-data-and-geography.md
+      - 011 Reprocessing and Change Detection: adr/011-reprocessing-and-change-detection.md
+      - 012 Data Quality Exception Handling: adr/012-data-quality-exception-handling.md
+      - 013 Cloud Validation Slice: adr/013-cloud-validation-slice.md
+      - 014 AWS Validation Infrastructure Operating Model: adr/014-aws-validation-infrastructure-operating-model.md
+      - 015 Release and Deployment Workflow: adr/015-release-and-deployment-workflow.md
 
   - Discovery:
       - Data Discovery Taxi: exploration_notes/data-discovery-taxi.md
@@ -51,14 +65,17 @@ markdown_extensions:
   - admonition
   - attr_list
   - tables
+  - plantuml_markdown:
+      format: svg_inline
+      remove_inline_svg_size: true
+      servers:
+        - https://www.plantuml.com/plantuml
+      base_dir: .
+      config: docs/plantuml-config.puml
   - toc:
       permalink: true
   - pymdownx.details
-  - pymdownx.superfences:
-      custom_fences:
-        - name: mermaid
-          class: mermaid
-          format: !!python/name:mermaid2.fence_mermaid_custom
+  - pymdownx.superfences
   - pymdownx.highlight
   - pymdownx.inlinehilite
   - pymdownx.snippets

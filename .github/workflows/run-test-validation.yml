@@ -1,0 +1,87 @@
+name: Run Test Validation
+
+on:
+  workflow_dispatch:
+    inputs:
+      commit_sha:
+        description: Full commit SHA already deployed into test and ready for cloud validation
+        required: true
+      reason:
+        description: Why this validation run is being executed
+        required: true
+        default: manual_test_validation
+
+permissions:
+  actions: read
+  contents: read
+  id-token: write
+
+concurrency:
+  group: run-test-validation
+  cancel-in-progress: false
+
+jobs:
+  validate-test:
+    runs-on: ubuntu-latest
+    environment: test
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Resolve commit and matching CI run
+        id: resolve
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git fetch origin main develop --tags
+          COMMIT_SHA="$(git rev-parse "${{ github.event.inputs.commit_sha }}")"
+          if git merge-base --is-ancestor "${COMMIT_SHA}" origin/main; then
+            :
+          elif git merge-base --is-ancestor "${COMMIT_SHA}" origin/develop; then
+            :
+          else
+            echo "Commit ${COMMIT_SHA} is not contained in origin/main or origin/develop" >&2
+            exit 1
+          fi
+          gh api "/repos/${GITHUB_REPOSITORY}/actions/runs?event=push&head_sha=${COMMIT_SHA}&status=completed&per_page=100" > /tmp/test-validation-ci-runs.json
+          CI_RUN="$(jq -r '.workflow_runs | map(select(.name == "CI" and .conclusion == "success")) | sort_by(.run_number) | last | @base64' /tmp/test-validation-ci-runs.json)"
+          if [ -z "${CI_RUN}" ]; then
+            echo "No successful CI push run found for ${COMMIT_SHA}" >&2
+            exit 1
+          fi
+          CI_RUN_URL="$(printf '%s' "${CI_RUN}" | base64 --decode | jq -r '.html_url')"
+          CI_RUN_ID="$(printf '%s' "${CI_RUN}" | base64 --decode | jq -r '.id')"
+          {
+            echo "commit_sha=${COMMIT_SHA}"
+            echo "ci_run_id=${CI_RUN_ID}"
+            echo "ci_run_url=${CI_RUN_URL}"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Download CI metadata artifact
+        uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          run-id: ${{ steps.resolve.outputs.ci_run_id }}
+          name: cicd-metadata
+          path: .ci-input/cicd-metadata
+
+      - name: Ensure commit is deploy-relevant
+        run: |
+          jq -e '.deploy_relevant == true' .ci-input/cicd-metadata/cicd-metadata.json >/dev/null
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: eu-west-1
+
+      - name: Run cloud validation for deployed test commit
+        run: |
+          scripts/run-validation-pipeline.sh \
+            --env test \
+            --commit-sha "${{ steps.resolve.outputs.commit_sha }}" \
+            --ci-run-url "${{ steps.resolve.outputs.ci_run_url }}" \
+            --workflow-run-url "https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" \
+            --reason "${{ github.event.inputs.reason }}"

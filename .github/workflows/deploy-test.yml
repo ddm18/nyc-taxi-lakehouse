@@ -1,0 +1,62 @@
+name: Deploy Test (Reusable)
+
+on:
+  workflow_call:
+    inputs:
+      commit_sha:
+        required: true
+        type: string
+      ci_run_id:
+        required: true
+        type: string
+      deploy_reason:
+        required: true
+        type: string
+
+jobs:
+  deploy-test:
+    runs-on: ubuntu-latest
+    environment: test
+    permissions:
+      actions: read
+      contents: read
+      id-token: write
+    env:
+      AWS_REGION: eu-west-1
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.commit_sha }}
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Download deploy bundle from CI
+        uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          run-id: ${{ inputs.ci_run_id }}
+          name: deploy-bundle
+          path: .ci-input/deploy-bundle
+
+      - name: Verify deploy bundle metadata
+        run: |
+          test -f .ci-input/deploy-bundle/build-metadata.json
+          jq -e --arg commit_sha "${{ inputs.commit_sha }}" '.commit_sha == $commit_sha' .ci-input/deploy-bundle/build-metadata.json >/dev/null
+          {
+            echo "IMAGE_URI=$(jq -r '.image_uri' .ci-input/deploy-bundle/build-metadata.json)"
+            echo "CI_RUN_URL=$(jq -r '.ci_run_url' .ci-input/deploy-bundle/build-metadata.json)"
+          } >> "$GITHUB_ENV"
+
+      - name: Deploy test runtime
+        run: |
+          scripts/deploy-runtime.sh \
+            --env test \
+            --commit-sha "${{ inputs.commit_sha }}" \
+            --image-uri "${IMAGE_URI}" \
+            --ci-run-url "${CI_RUN_URL}" \
+            --reason "${{ inputs.deploy_reason }}"

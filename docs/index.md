@@ -1,56 +1,77 @@
 # NYC Urban Mobility Data Platform
 
-!!! abstract "Scope"
-    Documentation for the Phase 1 lakehouse platform focused on NYC urban mobility analysis.
+!!! abstract "What this site is for"
+    This documentation explains how the Phase 1 platform is structured, how the
+    pipeline executes, and how the `local`, `test`, and `prod` environments fit
+    together.
 
-## Documentation Map
+## Start Here
 
-### Architecture
-- [Platform Overview](arch-phase1.md)
-- [Repository Structure](repo-structure.md)
+If you want to understand the platform quickly, read the pages in this order:
 
-### ADR (Architecture Decision Records)
-- [ADR-001 Ingestion Model](adr/001-ingestion-model.md)
-- [ADR-002 Partitioning Strategy](adr/002-partitioning-strategy.md)
-- [ADR-003 Schema Contracts](adr/003-schema-contracts.md)
-- [ADR-004 Data Quality](adr/004-data-quality.md)
-- [ADR-005 Data Governance](adr/005-data-governance.md)
-- [ADR-006 Infrastructure as Code](adr/006-infrastructure.md)
-- [ADR-007 Pipeline State Tracking](adr/007-pipeline.md)
-- [ADR-008 Transformation Layer Implemented with dbt](adr/008-dbt-transformation-layer.md)
-- [ADR-009 Environment Topology](adr/009-environment-topology.md)
-- [ADR-010 Internal Reference Data and Geography](adr/010-reference-data-and-geography.md)
-- [ADR-011 Reprocessing and Change Detection](adr/011-reprocessing-and-change-detection.md)
-- [ADR-012 Data Quality Exception Handling](adr/012-data-quality-exception-handling.md)
+1. [System Overview](architecture/overview.md)
+2. [Platform Components](architecture/components.md)
+3. [Pipeline Execution](architecture/pipeline-execution.md)
+4. [Deployment Topology](architecture/deployment-topology.md)
+5. [Environment Model](architecture/environment-model.md)
+6. [CI/CD Workflow](architecture/cicd.md)
 
-### Discovery Notes
-- [Taxi Dataset Discovery](exploration_notes/data-discovery-taxi.md)
-- [Weather Dataset Discovery](exploration_notes/data-discovery-weather.md)
+## Platform At A Glance
 
-## Phase 1 Principles
+```plantuml
+@startuml
+left to right direction
+scale 0.76
 
-- Deterministic ingestion at `dataset-month` granularity
-- Canonical schema in Silver with explicit type normalization
-- Layered governance (`landing -> bronze -> silver -> gold`)
-- Observable pipelines through operational metadata (`ops`)
-- Official TLC zones as Phase 1 physical geography
-- Controlled restatement through transformation version and source metadata
+rectangle "NYC TLC Source Files" as SRC
+rectangle "Taxi Zone Reference" as REF
+storage "Landing" as LAND
+storage "Bronze" as BR
+storage "Silver" as SI
+storage "Gold" as GO
+storage "Ops Metadata" as OPS
+storage "Quarantine" as QU
 
-## Architecture Flow
-
-```mermaid
-flowchart LR
-    SRC["NYC TLC CloudFront"] --> L["Landing"]
-    REF["Reference Data"] --> L
-    L --> B["Bronze"]
-    B --> S["Silver"]
-    S --> G["Gold"]
-
-    S --> QC["Data Quality Checks"]
-    QC --> OPS["Ops Metadata"]
-    QC --> Q["Quarantine"]
+SRC --> LAND
+REF --> LAND
+LAND --> BR
+BR --> SI
+SI --> GO
+SI --> OPS
+SI --> QU
+@enduml
 ```
 
-!!! tip "How to use this site"
-    Start from the architecture overview, then read ADRs in numeric order.
-    Use discovery notes as the evidence base for design decisions.
+## Core Ideas
+
+- The platform ingests NYC TLC data at `dataset-month` granularity.
+- `local` is a developer runtime, not a deployed environment.
+- `test` and `prod` are the deployed AWS environments.
+- The analytical path is layered: `landing -> bronze -> silver -> gold`.
+- Operational control data lives in `ops`.
+- Cloud validation uses MWAA for orchestration and ECS/Fargate for stage
+  execution.
+
+## Documentation Structure
+
+### Architecture
+
+- [System Overview](architecture/overview.md)
+- [Platform Components](architecture/components.md)
+- [Pipeline Execution](architecture/pipeline-execution.md)
+- [Deployment Topology](architecture/deployment-topology.md)
+- [Environment Model](architecture/environment-model.md)
+- [CI/CD Workflow](architecture/cicd.md)
+- [Repository Structure](repo-structure.md)
+
+### ADRs
+
+Use the ADR section for the design decisions behind the implementation.
+
+### Discovery Notes
+
+Use the discovery notes as the evidence base for source-level assumptions.
+
+!!! tip "Reading mode"
+    The architecture pages explain the system as it is meant to be understood.
+    The ADRs explain why those choices were made.

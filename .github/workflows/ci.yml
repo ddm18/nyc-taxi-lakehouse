@@ -1,0 +1,259 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - develop
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  detect-changes:
+    runs-on: ubuntu-latest
+    outputs:
+      deploy_relevant: ${{ steps.diff.outputs.deploy_relevant }}
+      changed_files_json: ${{ steps.diff.outputs.changed_files_json }}
+      deploy_relevant_files_json: ${{ steps.diff.outputs.deploy_relevant_files_json }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Compute changed files
+        id: diff
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          import subprocess
+          from pathlib import Path
+
+          event_name = os.environ["GITHUB_EVENT_NAME"]
+          event_path = Path(os.environ["GITHUB_EVENT_PATH"])
+          github_sha = os.environ["GITHUB_SHA"]
+          payload = json.loads(event_path.read_text(encoding="utf-8"))
+
+          def git(*args: str) -> str:
+              return subprocess.check_output(["git", *args], text=True).strip()
+
+          if event_name == "pull_request":
+              base = payload["pull_request"]["base"]["sha"]
+              head = payload["pull_request"]["head"]["sha"]
+          else:
+              base = payload.get("before", "")
+              head = github_sha
+              if not base or set(base) == {"0"}:
+                  try:
+                      base = git("rev-parse", f"{head}^")
+                  except subprocess.CalledProcessError:
+                      base = ""
+
+          if base:
+              diff_output = git("diff", "--name-only", base, head)
+              changed_files = [line for line in diff_output.splitlines() if line.strip()]
+          else:
+              tree_output = git("ls-tree", "-r", "--name-only", head)
+              changed_files = [line for line in tree_output.splitlines() if line.strip()]
+
+          deploy_prefixes = (
+              "airflow/",
+              "orchestration/",
+              "ingestion/",
+              "dbt/",
+              "infra/",
+              ".github/workflows/",
+              "tests/",
+          )
+          deploy_exact = {"docker-compose.yml"}
+
+          deploy_relevant_files = [
+              path
+              for path in changed_files
+              if path.startswith(deploy_prefixes) or path in deploy_exact
+          ]
+          deploy_relevant = bool(deploy_relevant_files)
+
+          output_path = Path(os.environ["GITHUB_OUTPUT"])
+          with output_path.open("a", encoding="utf-8") as fh:
+              fh.write(f"deploy_relevant={'true' if deploy_relevant else 'false'}\n")
+              fh.write(
+                  "changed_files_json=" + json.dumps(changed_files, separators=(",", ":")) + "\n"
+              )
+              fh.write(
+                  "deploy_relevant_files_json="
+                  + json.dumps(deploy_relevant_files, separators=(",", ":"))
+                  + "\n"
+              )
+          PY
+
+      - name: Write CI metadata artifact
+        run: |
+          DEPLOY_RELEVANT='${{ steps.diff.outputs.deploy_relevant }}'
+          mkdir -p .ci-artifacts
+          jq -n \
+            --arg commit_sha "${GITHUB_SHA}" \
+            --arg event_name "${GITHUB_EVENT_NAME}" \
+            --arg source_branch "${GITHUB_REF_NAME}" \
+            --arg deploy_relevant "${DEPLOY_RELEVANT}" \
+            --argjson changed_files '${{ steps.diff.outputs.changed_files_json }}' \
+            --argjson deploy_relevant_files '${{ steps.diff.outputs.deploy_relevant_files_json }}' \
+            --arg ci_run_id "${GITHUB_RUN_ID}" \
+            --arg ci_run_url "https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" \
+            '{
+              commit_sha: $commit_sha,
+              event_name: $event_name,
+              source_branch: $source_branch,
+              deploy_relevant: ($deploy_relevant == "true"),
+              changed_files: $changed_files,
+              deploy_relevant_files: $deploy_relevant_files,
+              ci_run_id: $ci_run_id,
+              ci_run_url: $ci_run_url
+            }' > .ci-artifacts/cicd-metadata.json
+
+      - name: Upload CI metadata artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: cicd-metadata
+          path: .ci-artifacts/cicd-metadata.json
+          retention-days: 14
+
+  validate:
+    runs-on: ubuntu-latest
+    needs: detect-changes
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.12.2
+
+      - name: Install Python dependencies
+        run: pip install -r airflow/requirements.txt
+
+      - name: Run unit tests
+        run: python -m unittest discover -s tests -q
+
+      - name: Terraform format check
+        run: terraform fmt -check -recursive infra/terraform
+
+      - name: Terraform validate bootstrap state
+        run: |
+          terraform -chdir=infra/terraform/bootstrap/state init -backend=false
+          terraform -chdir=infra/terraform/bootstrap/state validate
+
+      - name: Terraform validate bootstrap ECR
+        run: |
+          terraform -chdir=infra/terraform/bootstrap/ecr init -backend=false
+          terraform -chdir=infra/terraform/bootstrap/ecr validate
+
+      - name: Terraform validate bootstrap storage
+        run: |
+          terraform -chdir=infra/terraform/bootstrap/storage init -backend=false
+          terraform -chdir=infra/terraform/bootstrap/storage validate
+
+      - name: Terraform validate test
+        run: |
+          terraform -chdir=infra/terraform/envs/test init -backend=false
+          terraform -chdir=infra/terraform/envs/test validate
+
+      - name: Terraform validate prod
+        run: |
+          terraform -chdir=infra/terraform/envs/prod init -backend=false
+          terraform -chdir=infra/terraform/envs/prod validate
+
+      - name: Build ECS runtime image
+        if: needs.detect-changes.outputs.deploy_relevant == 'true'
+        run: docker build -f orchestration/cloud/Dockerfile .
+
+  build-publish:
+    runs-on: ubuntu-latest
+    needs:
+      - detect-changes
+      - validate
+    if: github.event_name == 'push' && needs.detect-changes.outputs.deploy_relevant == 'true'
+    environment: build
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: eu-west-1
+
+      - name: Log in to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build and push deployable image
+        env:
+          ECR_REPOSITORY: nyc-data-platform-test
+          REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+        run: |
+          SHORT_SHA="${GITHUB_SHA::12}"
+          docker build \
+            -f orchestration/cloud/Dockerfile \
+            -t "$REGISTRY/$ECR_REPOSITORY:${GITHUB_SHA}" \
+            -t "$REGISTRY/$ECR_REPOSITORY:${SHORT_SHA}" \
+            .
+          docker push "$REGISTRY/$ECR_REPOSITORY:${GITHUB_SHA}"
+          docker push "$REGISTRY/$ECR_REPOSITORY:${SHORT_SHA}"
+          DIGEST="$(aws ecr describe-images --repository-name "$ECR_REPOSITORY" --image-ids imageTag="${GITHUB_SHA}" --query 'imageDetails[0].imageDigest' --output text)"
+          mkdir -p .ci-artifacts/deploy-bundle/dags .ci-artifacts/plugins-src
+          cp -R airflow/dags/. .ci-artifacts/deploy-bundle/dags/
+          cp airflow/mwaa-requirements.txt .ci-artifacts/deploy-bundle/mwaa-requirements.txt
+          cp -R orchestration .ci-artifacts/plugins-src/orchestration
+          cp -R ingestion .ci-artifacts/plugins-src/ingestion
+          (
+            cd .ci-artifacts/plugins-src
+            zip -rq ../deploy-bundle/plugins.zip orchestration ingestion
+          )
+          jq -n \
+            --arg commit_sha "${GITHUB_SHA}" \
+            --arg short_sha "${SHORT_SHA}" \
+            --arg source_branch "${GITHUB_REF_NAME}" \
+            --arg image_digest "${DIGEST}" \
+            --arg image_uri "$REGISTRY/$ECR_REPOSITORY@${DIGEST}" \
+            --arg ecr_repository "$ECR_REPOSITORY" \
+            --arg registry "$REGISTRY" \
+            --arg transformation_version "${GITHUB_SHA}" \
+            --arg ci_run_id "${GITHUB_RUN_ID}" \
+            --arg ci_run_url "https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" \
+            --argjson changed_files '${{ needs.detect-changes.outputs.changed_files_json }}' \
+            --argjson deploy_relevant_files '${{ needs.detect-changes.outputs.deploy_relevant_files_json }}' \
+            '{
+              commit_sha: $commit_sha,
+              short_sha: $short_sha,
+              source_branch: $source_branch,
+              image_digest: $image_digest,
+              image_uri: $image_uri,
+              ecr_repository: $ecr_repository,
+              registry: $registry,
+              transformation_version: $transformation_version,
+              ci_run_id: $ci_run_id,
+              ci_run_url: $ci_run_url,
+              changed_files: $changed_files,
+              deploy_relevant_files: $deploy_relevant_files
+            }' > .ci-artifacts/deploy-bundle/build-metadata.json
+
+      - name: Upload deploy bundle artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: deploy-bundle
+          path: .ci-artifacts/deploy-bundle
+          retention-days: 14

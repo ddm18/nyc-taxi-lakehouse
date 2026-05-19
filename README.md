@@ -26,6 +26,9 @@ or machine learning.
 The objective is to design a **production-like data platform**
 with governance, historical retention, data contracts, and quality controls.
 
+The release and deployment workflow is documented separately in
+`docs/architecture/cicd.md` so that the CI/CD operating model stays explicit.
+
 ---
 
 ## 2. Stakeholders

@@ -1,0 +1,77 @@
+name: Deploy Test (Manual)
+
+on:
+  workflow_dispatch:
+    inputs:
+      commit_sha:
+        description: Full commit SHA already validated by CI on develop or main
+        required: true
+      reason:
+        description: Why this manual test deploy is being run
+        required: true
+        default: manual_test_deploy
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: deploy-test
+  cancel-in-progress: true
+
+jobs:
+  resolve:
+    runs-on: ubuntu-latest
+    outputs:
+      commit_sha: ${{ steps.resolve.outputs.commit_sha }}
+      ci_run_id: ${{ steps.resolve.outputs.ci_run_id }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Resolve commit and matching CI run
+        id: resolve
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git fetch origin main develop --tags
+          COMMIT_SHA="$(git rev-parse "${{ github.event.inputs.commit_sha }}")"
+          if git merge-base --is-ancestor "${COMMIT_SHA}" origin/main; then
+            :
+          elif git merge-base --is-ancestor "${COMMIT_SHA}" origin/develop; then
+            :
+          else
+            echo "Commit ${COMMIT_SHA} is not contained in origin/main or origin/develop" >&2
+            exit 1
+          fi
+          gh api "/repos/${GITHUB_REPOSITORY}/actions/runs?event=push&head_sha=${COMMIT_SHA}&status=completed&per_page=100" > /tmp/manual-test-ci-runs.json
+          CI_RUN_ID="$(jq -r '.workflow_runs | map(select(.name == "CI" and .conclusion == "success")) | sort_by(.run_number) | last | .id // empty' /tmp/manual-test-ci-runs.json)"
+          if [ -z "${CI_RUN_ID}" ]; then
+            echo "No successful CI push run found for ${COMMIT_SHA}" >&2
+            exit 1
+          fi
+          echo "commit_sha=${COMMIT_SHA}" >> "$GITHUB_OUTPUT"
+          echo "ci_run_id=${CI_RUN_ID}" >> "$GITHUB_OUTPUT"
+
+      - name: Download CI metadata artifact
+        uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          run-id: ${{ steps.resolve.outputs.ci_run_id }}
+          name: cicd-metadata
+          path: .ci-input/cicd-metadata
+
+      - name: Ensure commit is deploy-relevant
+        run: |
+          jq -e '.deploy_relevant == true' .ci-input/cicd-metadata/cicd-metadata.json >/dev/null
+
+  deploy:
+    needs: resolve
+    uses: ./.github/workflows/deploy-test.yml
+    with:
+      commit_sha: ${{ needs.resolve.outputs.commit_sha }}
+      ci_run_id: ${{ needs.resolve.outputs.ci_run_id }}
+      deploy_reason: ${{ github.event.inputs.reason }}
+    secrets: inherit

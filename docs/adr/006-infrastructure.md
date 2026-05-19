@@ -14,16 +14,14 @@ Manual provisioning would increase drift and operational risk.
 2. Organize code into reusable modules.
 3. Isolate configuration by environment.
 4. Use remote Terraform state for safe collaboration.
-5. Provision core platform metadata resources via IaC:
-   - data locations
-   - Unity Catalog catalogs/schemas
-   - RBAC permissions
+5. Separate persistent bootstrap prerequisites from environment-scoped runtime stacks when their lifecycles differ.
 
 ## Consequences
 
 - Infrastructure is reproducible and reviewable.
 - Environment setup becomes consistent.
 - Infra changes follow the same workflow as application code.
+- Shared prerequisites such as remote state and bootstrap artifact registries can outlive short-lived validation environments.
 
 ## Alternatives Considered
 

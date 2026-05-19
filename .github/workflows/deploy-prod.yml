@@ -1,0 +1,148 @@
+name: Deploy Prod
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Semver release tag to promote, for example v1.2.3
+        required: true
+      release_reason:
+        description: Why this prod promotion is being run
+        required: true
+        default: manual_prod_deploy
+
+permissions:
+  actions: read
+  contents: write
+  id-token: write
+
+concurrency:
+  group: deploy-prod
+  cancel-in-progress: false
+
+jobs:
+  deploy-prod:
+    runs-on: ubuntu-latest
+    environment: prod
+    env:
+      AWS_REGION: eu-west-1
+      TEST_ARTIFACT_BUCKET_NAME: nyc-data-platform-test-artifacts
+      TEST_ECR_REPOSITORY: nyc-data-platform-test
+      PROD_ECR_REPOSITORY: nyc-data-platform-prod
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Resolve release tag to commit
+        id: resolve_tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git fetch origin main --tags
+          RELEASE_TAG="${{ github.event.inputs.release_tag }}"
+          if ! [[ "${RELEASE_TAG}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Release tag must match vX.Y.Z" >&2
+            exit 1
+          fi
+          COMMIT_SHA="$(git rev-list -n 1 "${RELEASE_TAG}")"
+          if [ -z "${COMMIT_SHA}" ]; then
+            echo "Release tag ${RELEASE_TAG} does not exist" >&2
+            exit 1
+          fi
+          if ! git merge-base --is-ancestor "${COMMIT_SHA}" origin/main; then
+            echo "Release tag ${RELEASE_TAG} does not point to a commit contained in origin/main" >&2
+            exit 1
+          fi
+          gh api "/repos/${GITHUB_REPOSITORY}/actions/runs?event=push&head_sha=${COMMIT_SHA}&status=completed&per_page=100" > /tmp/prod-ci-runs.json
+          CI_RUN="$(jq -r '.workflow_runs | map(select(.name == "CI" and .conclusion == "success")) | sort_by(.run_number) | last | @base64' /tmp/prod-ci-runs.json)"
+          if [ -z "${CI_RUN}" ]; then
+            echo "No successful CI push run found for ${COMMIT_SHA}" >&2
+            exit 1
+          fi
+          CI_RUN_ID="$(printf '%s' "${CI_RUN}" | base64 --decode | jq -r '.id')"
+          CI_RUN_URL="$(printf '%s' "${CI_RUN}" | base64 --decode | jq -r '.html_url')"
+          {
+            echo "RELEASE_TAG=${RELEASE_TAG}"
+            echo "COMMIT_SHA=${COMMIT_SHA}"
+            echo "CI_RUN_ID=${CI_RUN_ID}"
+            echo "CI_RUN_URL=${CI_RUN_URL}"
+            echo "EXPECTED_RELEASE_URL=https://github.com/${GITHUB_REPOSITORY}/releases/tag/${RELEASE_TAG}"
+          } >> "$GITHUB_ENV"
+
+      - name: Validate successful test run record
+        run: |
+          TEST_RUN_S3_URI="s3://${TEST_ARTIFACT_BUCKET_NAME}/releases/test-runs/${COMMIT_SHA}.json"
+          aws s3 cp "${TEST_RUN_S3_URI}" /tmp/test-run-record.json
+          jq -e --arg commit_sha "${COMMIT_SHA}" '.status == "success" and .commit_sha == $commit_sha' /tmp/test-run-record.json >/dev/null
+          echo "TEST_RUN_S3_URI=${TEST_RUN_S3_URI}" >> "$GITHUB_ENV"
+
+      - name: Download deploy bundle from CI
+        uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          run-id: ${{ env.CI_RUN_ID }}
+          name: deploy-bundle
+          path: .ci-input/deploy-bundle
+
+      - name: Verify deploy bundle metadata
+        run: |
+          test -f .ci-input/deploy-bundle/build-metadata.json
+          jq -e --arg commit_sha "${COMMIT_SHA}" '.commit_sha == $commit_sha' .ci-input/deploy-bundle/build-metadata.json >/dev/null
+          {
+            echo "SOURCE_IMAGE_DIGEST=$(jq -r '.image_digest' .ci-input/deploy-bundle/build-metadata.json)"
+            echo "SOURCE_IMAGE_URI=$(jq -r '.image_uri' .ci-input/deploy-bundle/build-metadata.json)"
+          } >> "$GITHUB_ENV"
+
+      - name: Log in to Amazon ECR
+        id: login_ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Promote validated digest into prod repository
+        env:
+          REGISTRY: ${{ steps.login_ecr.outputs.registry }}
+        run: |
+          MANIFEST="$(aws ecr batch-get-image --repository-name "${TEST_ECR_REPOSITORY}" --image-ids imageDigest="${SOURCE_IMAGE_DIGEST}" --query 'images[0].imageManifest' --output text)"
+          aws ecr put-image --repository-name "${PROD_ECR_REPOSITORY}" --image-tag "${RELEASE_TAG}" --image-manifest "${MANIFEST}" >/dev/null
+          {
+            echo "IMAGE_DIGEST=${SOURCE_IMAGE_DIGEST}"
+            echo "IMAGE_URI=${REGISTRY}/${PROD_ECR_REPOSITORY}@${SOURCE_IMAGE_DIGEST}"
+          } >> "$GITHUB_ENV"
+
+      - name: Deploy prod runtime
+        run: |
+          scripts/deploy-runtime.sh \
+            --env prod \
+            --commit-sha "${COMMIT_SHA}" \
+            --image-uri "${IMAGE_URI}" \
+            --ci-run-url "${CI_RUN_URL}" \
+            --release-tag "${RELEASE_TAG}" \
+            --reason "${{ github.event.inputs.release_reason }}"
+
+      - name: Create or update GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cat > /tmp/prod-release-notes.md <<EOF
+          Release tag: ${RELEASE_TAG}
+
+          - Commit SHA: ${COMMIT_SHA}
+          - Image digest: ${IMAGE_DIGEST}
+          - Image URI: ${IMAGE_URI}
+          - Transformation version: ${COMMIT_SHA}
+          - Test validation record: ${TEST_RUN_S3_URI}
+          - CI run: ${CI_RUN_URL}
+          - Prod workflow run: https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}
+          EOF
+          if gh release view "${RELEASE_TAG}" >/dev/null 2>&1; then
+            gh release edit "${RELEASE_TAG}" --title "${RELEASE_TAG}" --notes-file /tmp/prod-release-notes.md
+          else
+            gh release create "${RELEASE_TAG}" --verify-tag --title "${RELEASE_TAG}" --notes-file /tmp/prod-release-notes.md
+          fi

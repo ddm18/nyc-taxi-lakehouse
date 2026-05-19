@@ -2,6 +2,7 @@
 __pycache__/
 *.py[codz]
 *$py.class
+.DS_Store
 
 # C extensions
 *.so
@@ -200,6 +201,7 @@ cython_debug/
 #  refer to https://docs.cursor.com/context/ignore-files
 .cursorignore
 .cursorindexingignore
+.claude/
 
 # Marimo
 marimo/_static/
@@ -217,11 +219,10 @@ trip_record_user_guide.pdf
 # Local AI orchestration assets
 /orchestration/ai/
 
-# Local runtime state
+# Local runtime and Terraform artifacts
 .local/
 /metastore_db/
-
-# Terraform local state
 .terraform/
 *.tfstate
 *.tfstate.*
+derby.log

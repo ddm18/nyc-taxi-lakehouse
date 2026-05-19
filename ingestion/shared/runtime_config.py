@@ -3,8 +3,9 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-DEFAULT_LAKEHOUSE_BUCKET_URI = "s3://nyc-data-platform-test"
-DEFAULT_LAKEHOUSE_ENV = "test"
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+DEFAULT_LAKEHOUSE_BUCKET_URI = str(PROJECT_ROOT / ".local" / "lakehouse")
+DEFAULT_LAKEHOUSE_ENV = "local"
 DEFAULT_TRANSFORMATION_VERSION = "local-dev"
 
 

@@ -34,13 +34,14 @@ services:
       AWS_REGION: ${AWS_REGION:-eu-west-1}
       AWS_SHARED_CREDENTIALS_FILE: /home/airflow/.aws/credentials
       AWS_CONFIG_FILE: /home/airflow/.aws/config
-      LAKEHOUSE_BUCKET_URI: ${LAKEHOUSE_BUCKET_URI:-s3://nyc-data-platform-test}
-      LAKEHOUSE_ENV: ${LAKEHOUSE_ENV:-test}
-      LAKEHOUSE_ROOT: ${LAKEHOUSE_ROOT:-s3://nyc-data-platform-test/test}
+      PIPELINE_RUNTIME: ${PIPELINE_RUNTIME:-local}
+      LAKEHOUSE_BUCKET_URI: ${LAKEHOUSE_BUCKET_URI:-/opt/project/.local/lakehouse}
+      LAKEHOUSE_ENV: ${LAKEHOUSE_ENV:-local}
+      LAKEHOUSE_ROOT: ${LAKEHOUSE_ROOT:-/opt/project/.local/lakehouse/local}
       TRANSFORMATION_VERSION: ${TRANSFORMATION_VERSION:-local-dev}
       SPARK_MASTER: ${SPARK_MASTER:-local[*]}
-      SPARK_WAREHOUSE_DIR: ${SPARK_WAREHOUSE_DIR:-s3a://nyc-data-platform-test/test/warehouse}
-      SPARK_METASTORE_DIR: ${SPARK_METASTORE_DIR:-/opt/project/.local/spark/test/metastore_db}
+      SPARK_WAREHOUSE_DIR: ${SPARK_WAREHOUSE_DIR:-/opt/project/.local/lakehouse/local/warehouse}
+      SPARK_METASTORE_DIR: ${SPARK_METASTORE_DIR:-/opt/project/.local/spark/local/metastore_db}
       SPARK_JARS_PACKAGES: ${SPARK_JARS_PACKAGES:-io.delta:delta-spark_2.12:3.2.0,org.apache.hadoop:hadoop-aws:3.3.4,com.amazonaws:aws-java-sdk-bundle:1.12.262}
     user: "${AIRFLOW_UID:-50000}:0"
     volumes:
