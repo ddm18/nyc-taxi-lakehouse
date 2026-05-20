@@ -4,7 +4,7 @@ import argparse
 from pathlib import Path
 from typing import Any
 
-from ingestion.shared.io import write_json
+from ingestion.shared.storage_io import write_json
 from orchestration.cloud import audit
 from orchestration.cloud.stages import (
     default_data_interval_end,

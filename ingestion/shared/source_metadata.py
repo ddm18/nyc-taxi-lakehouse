@@ -6,7 +6,7 @@ import json
 from typing import Any
 
 from ingestion.shared.dto import DatasetMonthDTO
-from ingestion.shared.io import read_text, uri_exists, write_text
+from ingestion.shared.storage_io import read_text, uri_exists, write_text
 
 
 @dataclass(frozen=True)

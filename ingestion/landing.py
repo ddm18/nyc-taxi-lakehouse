@@ -4,7 +4,7 @@ from ingestion.shared.dto import (
     LandingIngestionRequestDTO,
     LandingObjectSummaryDTO,
 )
-from ingestion.shared.io import download_file
+from ingestion.shared.storage_io import download_file
 from ingestion.shared.source_metadata import record_source_metadata_observation
 from ingestion.shared.source_config import (
     build_landing_object_uri,

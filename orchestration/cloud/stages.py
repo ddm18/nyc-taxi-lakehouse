@@ -9,7 +9,7 @@ import sys
 from typing import Any
 
 from ingestion.shared.dto import DatasetMonthDTO
-from ingestion.shared.io import probe_http_resource, uri_exists, write_text
+from ingestion.shared.storage_io import probe_http_resource, uri_exists, write_text
 from ingestion.shared.pipeline_state import (
     PipelineStageStateDTO,
     build_pipeline_state_uri,
@@ -467,4 +467,3 @@ def stage_task_id(service: str, stage: str) -> str:
 
 def default_data_interval_end(year: int, month: int) -> str:
     return datetime(year=year, month=month, day=1).isoformat()
-

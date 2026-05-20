@@ -121,8 +121,9 @@ resource "aws_cloudwatch_log_group" "mwaa" {
 }
 
 resource "aws_secretsmanager_secret" "audit_db" {
-  name = "${local.name_prefix}/audit-db"
-  tags = local.common_tags
+  name                    = "${local.name_prefix}/audit-db"
+  recovery_window_in_days = 0
+  tags                    = local.common_tags
 }
 
 resource "aws_secretsmanager_secret_version" "audit_db" {
