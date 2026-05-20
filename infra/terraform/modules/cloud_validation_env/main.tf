@@ -34,6 +34,13 @@ resource "aws_security_group" "lambda" {
   tags        = local.common_tags
 }
 
+resource "aws_security_group" "mwaa" {
+  name        = "${local.name_prefix}-mwaa"
+  description = "MWAA environment security group"
+  vpc_id      = module.network.vpc_id
+  tags        = local.common_tags
+}
+
 resource "aws_security_group" "rds" {
   name        = "${local.name_prefix}-rds"
   description = "RDS security group"
@@ -74,6 +81,24 @@ resource "aws_security_group_rule" "lambda_all_egress" {
   to_port           = 0
   protocol          = "-1"
   security_group_id = aws_security_group.lambda.id
+  cidr_blocks       = ["0.0.0.0/0"]
+}
+
+resource "aws_security_group_rule" "mwaa_self_ingress" {
+  type                     = "ingress"
+  from_port                = 0
+  to_port                  = 0
+  protocol                 = "-1"
+  security_group_id        = aws_security_group.mwaa.id
+  source_security_group_id = aws_security_group.mwaa.id
+}
+
+resource "aws_security_group_rule" "mwaa_all_egress" {
+  type              = "egress"
+  from_port         = 0
+  to_port           = 0
+  protocol          = "-1"
+  security_group_id = aws_security_group.mwaa.id
   cidr_blocks       = ["0.0.0.0/0"]
 }
 
@@ -328,6 +353,13 @@ resource "aws_iam_role_policy" "mwaa_execution" {
     Statement = [
       {
         Effect = "Allow"
+        Action = ["airflow:PublishMetrics"]
+        Resource = [
+          "arn:aws:airflow:${var.aws_region}:${data.aws_caller_identity.current.account_id}:environment/${local.name_prefix}-mwaa",
+        ]
+      },
+      {
+        Effect = "Allow"
         Action = [
           "ecs:RunTask",
           "ecs:DescribeTasks",
@@ -339,16 +371,74 @@ resource "aws_iam_role_policy" "mwaa_execution" {
       },
       {
         Effect = "Allow"
-        Action = ["s3:GetObject", "s3:ListBucket", "s3:GetBucketPublicAccessBlock"]
+        Action = [
+          "s3:GetObject*",
+          "s3:GetBucket*",
+          "s3:List*",
+        ]
         Resource = [
           local.artifact_bucket_arn,
           "${local.artifact_bucket_arn}/*",
         ]
       },
       {
+        Effect = "Allow"
+        Action = [
+          "logs:CreateLogStream",
+          "logs:CreateLogGroup",
+          "logs:PutLogEvents",
+          "logs:GetLogEvents",
+          "logs:GetLogRecord",
+          "logs:GetLogGroupFields",
+          "logs:GetQueryResults",
+        ]
+        Resource = [
+          "arn:aws:logs:${var.aws_region}:${data.aws_caller_identity.current.account_id}:log-group:airflow-${local.name_prefix}-*",
+        ]
+      },
+      {
         Effect   = "Allow"
-        Action   = ["logs:CreateLogStream", "logs:CreateLogGroup", "logs:PutLogEvents"]
+        Action   = ["logs:DescribeLogGroups"]
         Resource = "*"
+      },
+      {
+        Effect   = "Allow"
+        Action   = ["s3:GetAccountPublicAccessBlock"]
+        Resource = "*"
+      },
+      {
+        Effect   = "Allow"
+        Action   = ["cloudwatch:PutMetricData"]
+        Resource = "*"
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "sqs:ChangeMessageVisibility",
+          "sqs:DeleteMessage",
+          "sqs:GetQueueAttributes",
+          "sqs:GetQueueUrl",
+          "sqs:ReceiveMessage",
+          "sqs:SendMessage",
+        ]
+        Resource = "arn:aws:sqs:${var.aws_region}:*:airflow-celery-*"
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "kms:Decrypt",
+          "kms:DescribeKey",
+          "kms:GenerateDataKey*",
+          "kms:Encrypt",
+        ]
+        NotResource = "arn:aws:kms:*:${data.aws_caller_identity.current.account_id}:key/*"
+        Condition = {
+          StringLike = {
+            "kms:ViaService" = [
+              "sqs.${var.aws_region}.amazonaws.com",
+            ]
+          }
+        }
       }
     ]
   })
@@ -371,7 +461,7 @@ resource "aws_mwaa_environment" "this" {
   }
 
   network_configuration {
-    security_group_ids = [aws_security_group.ecs_tasks.id]
+    security_group_ids = [aws_security_group.mwaa.id]
     subnet_ids         = module.network.private_subnet_ids
   }
 
@@ -400,3 +490,5 @@ resource "aws_mwaa_environment" "this" {
 
   tags = local.common_tags
 }
+
+data "aws_caller_identity" "current" {}
