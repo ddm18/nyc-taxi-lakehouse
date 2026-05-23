@@ -124,7 +124,7 @@ def dbt_command(stage: str, config: dict[str, Any] | None = None) -> list[str]:
             "--profiles-dir",
             str(DBT_PROFILES_DIR),
             "--select",
-            *DBT_STAGE_SELECTORS["gold_unified"],
+            *[f"+{selector}" for selector in DBT_STAGE_SELECTORS["gold_unified"]],
         ]
 
     if config is None:
@@ -133,6 +133,11 @@ def dbt_command(stage: str, config: dict[str, Any] | None = None) -> list[str]:
     service = str(config["service"])
     selectors = DBT_STAGE_SELECTORS[stage][service]
     subcommand = "run" if stage == "bronze" else "build"
+    if stage in {"silver", "gold"}:
+        # Each ECS task gets a fresh Spark session with an isolated local
+        # metastore, so downstream stages must rebuild their dbt parents inside
+        # the same invocation instead of relying on prior task catalog state.
+        selectors = [f"+{selector}" for selector in selectors]
     return [
         "dbt",
         subcommand,
