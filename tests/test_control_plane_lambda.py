@@ -1,0 +1,172 @@
+from __future__ import annotations
+
+import json
+import sys
+import types
+import unittest
+from unittest import mock
+
+boto3_stub = types.SimpleNamespace(client=lambda *args, **kwargs: None)
+
+with mock.patch.dict(sys.modules, {"boto3": boto3_stub}):
+    from orchestration.cloud import control_plane_lambda
+
+
+class ControlPlaneLambdaTests(unittest.TestCase):
+    def test_configure_only_waits_until_cloud_dag_is_ready(self) -> None:
+        commands: list[str] = []
+
+        def fake_cli(command: str) -> dict[str, object]:
+            commands.append(command)
+            if command == "variables set PIPELINE_RUNTIME cloud":
+                return {"stdout": "", "stderr": ""}
+            if command == "dags list-import-errors --output json":
+                return {"stdout": "[]", "stderr": ""}
+            if command == "tasks list nyc_taxi_pipeline":
+                if commands.count(command) == 1:
+                    return {
+                        "stdout": "\n".join(
+                            [
+                                "stage_reference_data_task",
+                                "resolve_yellow_config",
+                                "ingest_yellow_landing",
+                            ]
+                        ),
+                        "stderr": "",
+                    }
+                return {
+                    "stdout": "\n".join(control_plane_lambda.EXPECTED_CLOUD_TASK_IDS),
+                    "stderr": "",
+                }
+            raise AssertionError(f"Unexpected command: {command}")
+
+        with (
+            mock.patch.dict(
+                "os.environ",
+                {
+                    "AWS_REGION": "eu-west-1",
+                    "MWAA_DAG_ID": "nyc_taxi_pipeline",
+                    "MWAA_ENVIRONMENT_NAME": "test-mwaa",
+                    "CONTROL_PLANE_REPORT_BUCKET": "reports-bucket",
+                },
+                clear=False,
+            ),
+            mock.patch.object(control_plane_lambda, "_airflow_cli_request", side_effect=fake_cli),
+            mock.patch.object(control_plane_lambda.time, "sleep"),
+        ):
+            result = control_plane_lambda.lambda_handler(
+                {
+                    "dag_id": "nyc_taxi_pipeline",
+                    "configure_only": True,
+                    "airflow_variables": {"PIPELINE_RUNTIME": "cloud"},
+                },
+                None,
+            )
+
+        self.assertTrue(result["configured_only"])
+        self.assertEqual(
+            result["dag_readiness"]["task_ids"],
+            list(control_plane_lambda.EXPECTED_CLOUD_TASK_IDS),
+        )
+        self.assertEqual(commands[1], "dags list-import-errors --output json")
+        self.assertEqual(commands[2], "tasks list nyc_taxi_pipeline")
+
+    def test_trigger_flow_unpauses_dag_before_triggering(self) -> None:
+        commands: list[str] = []
+
+        def fake_cli(command: str) -> dict[str, object]:
+            commands.append(command)
+            if command == "dags list-import-errors --output json":
+                return {"stdout": "[]", "stderr": ""}
+            if command == "tasks list nyc_taxi_pipeline":
+                return {
+                    "stdout": "\n".join(control_plane_lambda.EXPECTED_CLOUD_TASK_IDS),
+                    "stderr": "",
+                }
+            if command == "dags unpause nyc_taxi_pipeline":
+                return {"stdout": "Dag: nyc_taxi_pipeline, paused: False\n", "stderr": ""}
+            if command.startswith("dags trigger nyc_taxi_pipeline -r "):
+                return {"stdout": "Created <DagRun manual__1>\n", "stderr": ""}
+            if command == "dags list-runs -d nyc_taxi_pipeline --output json":
+                return {
+                    "stdout": json.dumps(
+                        [{"run_id": "manual__1", "state": "success"}]
+                    ),
+                    "stderr": "",
+                }
+            raise AssertionError(f"Unexpected command: {command}")
+
+        with (
+            mock.patch.dict(
+                "os.environ",
+                {
+                    "AWS_REGION": "eu-west-1",
+                    "MWAA_DAG_ID": "nyc_taxi_pipeline",
+                    "MWAA_ENVIRONMENT_NAME": "test-mwaa",
+                    "CONTROL_PLANE_REPORT_BUCKET": "reports-bucket",
+                },
+                clear=False,
+            ),
+            mock.patch.object(control_plane_lambda, "_airflow_cli_request", side_effect=fake_cli),
+            mock.patch.object(
+                control_plane_lambda,
+                "_write_report_to_s3",
+                return_value="s3://reports-bucket/control-plane/test.json",
+            ),
+            mock.patch.object(control_plane_lambda.time, "sleep"),
+        ):
+            result = control_plane_lambda.lambda_handler(
+                {
+                    "dag_id": "nyc_taxi_pipeline",
+                    "conf": {"service": "yellow", "year": 2018, "month": 1},
+                    "run_id": "manual__1",
+                    "timeout_seconds": 1,
+                    "poll_seconds": 0,
+                },
+                None,
+            )
+
+        self.assertEqual(result["state"], "success")
+        self.assertEqual(commands[0], "dags list-import-errors --output json")
+        self.assertEqual(commands[1], "tasks list nyc_taxi_pipeline")
+        self.assertEqual(commands[2], "dags unpause nyc_taxi_pipeline")
+        self.assertTrue(
+            commands[3].startswith("dags trigger nyc_taxi_pipeline -r manual__1 --conf "),
+            commands,
+        )
+        self.assertEqual(commands[4], "dags list-runs -d nyc_taxi_pipeline --output json")
+
+    def test_configure_only_does_not_unpause_or_trigger(self) -> None:
+        with (
+            mock.patch.dict(
+                "os.environ",
+                {
+                    "AWS_REGION": "eu-west-1",
+                    "MWAA_DAG_ID": "nyc_taxi_pipeline",
+                    "MWAA_ENVIRONMENT_NAME": "test-mwaa",
+                    "CONTROL_PLANE_REPORT_BUCKET": "reports-bucket",
+                },
+                clear=False,
+            ),
+            mock.patch.object(
+                control_plane_lambda,
+                "_wait_for_cloud_dag_ready",
+                return_value={"task_ids": list(control_plane_lambda.EXPECTED_CLOUD_TASK_IDS)},
+            ),
+            mock.patch.object(control_plane_lambda, "_airflow_cli_request") as cli_request,
+        ):
+            result = control_plane_lambda.lambda_handler(
+                {
+                    "dag_id": "nyc_taxi_pipeline",
+                    "configure_only": True,
+                    "airflow_variables": {"PIPELINE_RUNTIME": "cloud"},
+                },
+                None,
+            )
+
+        self.assertTrue(result["configured_only"])
+        cli_request.assert_called_once_with("variables set PIPELINE_RUNTIME cloud")
+
+
+if __name__ == "__main__":
+    unittest.main()
