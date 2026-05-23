@@ -288,8 +288,8 @@ resource "aws_iam_role_policy" "lambda" {
       {
         Effect = "Allow"
         Action = [
-          "mwaa:CreateCliToken",
-          "mwaa:GetEnvironment"
+          "airflow:CreateCliToken",
+          "airflow:GetEnvironment"
         ]
         Resource = "*"
       },
