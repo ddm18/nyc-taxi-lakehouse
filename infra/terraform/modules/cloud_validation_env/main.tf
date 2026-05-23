@@ -312,14 +312,14 @@ resource "aws_iam_role_policy" "lambda" {
 }
 
 resource "aws_lambda_function" "control_plane" {
-  function_name = "${local.name_prefix}-control-plane"
-  role          = aws_iam_role.lambda.arn
-  runtime       = "python3.11"
-  handler       = "control_plane_lambda.lambda_handler"
-  filename      = data.archive_file.control_plane_lambda.output_path
+  function_name    = "${local.name_prefix}-control-plane"
+  role             = aws_iam_role.lambda.arn
+  runtime          = "python3.11"
+  handler          = "control_plane_lambda.lambda_handler"
+  filename         = data.archive_file.control_plane_lambda.output_path
   source_code_hash = data.archive_file.control_plane_lambda.output_base64sha256
-  timeout       = 900
-  memory_size   = 512
+  timeout          = 900
+  memory_size      = 512
 
   vpc_config {
     subnet_ids         = module.network.private_subnet_ids
