@@ -203,7 +203,10 @@ aws lambda invoke \
   --cli-binary-format raw-in-base64-out \
   --payload "file://${CONFIG_PAYLOAD_JSON}" \
   "${CONFIG_RESPONSE_JSON}" >/dev/null
-jq -e '.configured_only == true' "${CONFIG_RESPONSE_JSON}" >/dev/null
+if ! jq -e '.configured_only == true' "${CONFIG_RESPONSE_JSON}" >/dev/null; then
+  cat "${CONFIG_RESPONSE_JSON}" >&2
+  exit 1
+fi
 
 MWAA_STATUS="$(
   aws mwaa get-environment \

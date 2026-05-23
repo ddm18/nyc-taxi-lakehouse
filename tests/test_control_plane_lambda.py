@@ -13,6 +13,63 @@ with mock.patch.dict(sys.modules, {"boto3": boto3_stub}):
 
 
 class ControlPlaneLambdaTests(unittest.TestCase):
+    def test_configure_only_retries_transient_import_errors(self) -> None:
+        commands: list[str] = []
+
+        def fake_cli(command: str) -> dict[str, object]:
+            commands.append(command)
+            if command == "variables set PIPELINE_RUNTIME cloud":
+                return {"stdout": "", "stderr": ""}
+            if command == "dags list-import-errors --output json":
+                if commands.count(command) == 1:
+                    return {
+                        "stdout": json.dumps(
+                            [
+                                {
+                                    "filepath": "/usr/local/airflow/dags/nyc_taxi_pipeline.py",
+                                    "error": "ModuleNotFoundError: No module named 'orchestration'",
+                                }
+                            ]
+                        ),
+                        "stderr": "",
+                    }
+                return {"stdout": "[]", "stderr": ""}
+            if command == "tasks list nyc_taxi_pipeline":
+                return {
+                    "stdout": "\n".join(control_plane_lambda.EXPECTED_CLOUD_TASK_IDS),
+                    "stderr": "",
+                }
+            raise AssertionError(f"Unexpected command: {command}")
+
+        with (
+            mock.patch.dict(
+                "os.environ",
+                {
+                    "AWS_REGION": "eu-west-1",
+                    "MWAA_DAG_ID": "nyc_taxi_pipeline",
+                    "MWAA_ENVIRONMENT_NAME": "test-mwaa",
+                    "CONTROL_PLANE_REPORT_BUCKET": "reports-bucket",
+                },
+                clear=False,
+            ),
+            mock.patch.object(control_plane_lambda, "_airflow_cli_request", side_effect=fake_cli),
+            mock.patch.object(control_plane_lambda.time, "sleep"),
+        ):
+            result = control_plane_lambda.lambda_handler(
+                {
+                    "dag_id": "nyc_taxi_pipeline",
+                    "configure_only": True,
+                    "airflow_variables": {"PIPELINE_RUNTIME": "cloud"},
+                },
+                None,
+            )
+
+        self.assertTrue(result["configured_only"])
+        self.assertEqual(
+            result["dag_readiness"]["task_ids"],
+            list(control_plane_lambda.EXPECTED_CLOUD_TASK_IDS),
+        )
+
     def test_configure_only_waits_until_cloud_dag_is_ready(self) -> None:
         commands: list[str] = []
 

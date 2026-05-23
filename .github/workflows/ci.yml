@@ -218,6 +218,8 @@ jobs:
           DIGEST="$(aws ecr describe-images --repository-name "$ECR_REPOSITORY" --image-ids imageTag="${GITHUB_SHA}" --query 'imageDetails[0].imageDigest' --output text)"
           mkdir -p .ci-artifacts/deploy-bundle/dags .ci-artifacts/plugins-src
           cp -R airflow/dags/. .ci-artifacts/deploy-bundle/dags/
+          cp -R orchestration .ci-artifacts/deploy-bundle/dags/
+          cp -R ingestion .ci-artifacts/deploy-bundle/dags/
           cp airflow/mwaa-requirements.txt .ci-artifacts/deploy-bundle/mwaa-requirements.txt
           mkdir -p .ci-artifacts/plugins-src/orchestration/cloud
           cp orchestration/__init__.py .ci-artifacts/plugins-src/orchestration/__init__.py

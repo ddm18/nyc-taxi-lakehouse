@@ -113,10 +113,13 @@ def _wait_for_cloud_dag_ready(
     expected_task_ids = set(EXPECTED_CLOUD_TASK_IDS)
     start = time.time()
     last_task_ids: list[str] = []
+    last_import_errors: list[dict[str, Any]] = []
     while time.time() - start <= timeout_seconds:
         import_errors = _list_import_errors()
+        last_import_errors = import_errors
         if import_errors:
-            raise ValueError(f"DAG import errors detected: {json.dumps(import_errors, sort_keys=True)}")
+            time.sleep(poll_seconds)
+            continue
 
         task_ids = _list_task_ids(dag_id)
         last_task_ids = task_ids
@@ -127,6 +130,9 @@ def _wait_for_cloud_dag_ready(
             }
 
         time.sleep(poll_seconds)
+
+    if last_import_errors:
+        raise ValueError(f"DAG import errors detected: {json.dumps(last_import_errors, sort_keys=True)}")
 
     raise ValueError(
         "DAG did not become cloud-ready before timeout. "
