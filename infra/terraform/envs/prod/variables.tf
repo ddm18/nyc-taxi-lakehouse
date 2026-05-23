@@ -1,6 +1,6 @@
 variable "container_image_uri" {
   type    = string
-  default = "111111111111.dkr.ecr.eu-west-1.amazonaws.com/nyc-data-platform-prod@sha256:replace-me"
+  default = "public.ecr.aws/docker/library/busybox:stable"
 }
 
 variable "audit_db_password" {
@@ -8,4 +8,3 @@ variable "audit_db_password" {
   sensitive = true
   default   = "replace-me-before-apply"
 }
-

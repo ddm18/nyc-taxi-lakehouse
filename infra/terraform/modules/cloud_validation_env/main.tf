@@ -256,6 +256,40 @@ resource "aws_ecs_task_definition" "pipeline" {
   tags = local.common_tags
 }
 
+data "archive_file" "mwaa_plugins_placeholder" {
+  type        = "zip"
+  output_path = "${path.root}/.terraform/mwaa-plugins-placeholder.zip"
+
+  source {
+    content  = "placeholder"
+    filename = "placeholder.txt"
+  }
+}
+
+# Seed the MWAA source bucket with minimal artifacts so environment creation succeeds
+# before the real deploy bundle is uploaded by GitHub Actions.
+resource "aws_s3_object" "mwaa_dag_placeholder" {
+  bucket       = var.artifact_bucket_name
+  key          = "${var.mwaa_dag_s3_path}/placeholder.txt"
+  content      = "placeholder"
+  content_type = "text/plain"
+}
+
+resource "aws_s3_object" "mwaa_requirements_placeholder" {
+  bucket       = var.artifact_bucket_name
+  key          = var.mwaa_requirements_s3_path
+  content      = "# placeholder\n"
+  content_type = "text/plain"
+}
+
+resource "aws_s3_object" "mwaa_plugins_placeholder" {
+  bucket       = var.artifact_bucket_name
+  key          = var.mwaa_plugins_s3_path
+  source       = data.archive_file.mwaa_plugins_placeholder.output_path
+  content_type = "application/zip"
+  etag         = filemd5(data.archive_file.mwaa_plugins_placeholder.output_path)
+}
+
 data "archive_file" "control_plane_lambda" {
   type        = "zip"
   source_file = "${path.root}/../../../../orchestration/cloud/control_plane_lambda.py"
@@ -498,6 +532,12 @@ resource "aws_mwaa_environment" "this" {
       log_level = "INFO"
     }
   }
+
+  depends_on = [
+    aws_s3_object.mwaa_dag_placeholder,
+    aws_s3_object.mwaa_requirements_placeholder,
+    aws_s3_object.mwaa_plugins_placeholder,
+  ]
 
   tags = local.common_tags
 }
