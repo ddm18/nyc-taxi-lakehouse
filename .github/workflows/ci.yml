@@ -222,7 +222,14 @@ jobs:
           cp -R ingestion .ci-artifacts/plugins-src/ingestion
           grep -vE '^\s*(#|$|--)' airflow/mwaa-requirements.txt > .ci-artifacts/mwaa-wheel-requirements.txt
           if [ -s .ci-artifacts/mwaa-wheel-requirements.txt ]; then
-            python3 -m pip download --dest .ci-artifacts/plugins-src -r .ci-artifacts/mwaa-wheel-requirements.txt
+            python3 -m pip download \
+              --dest .ci-artifacts/plugins-src \
+              --only-binary=:all: \
+              --platform manylinux2014_x86_64 \
+              --implementation cp \
+              --python-version 3.11 \
+              --abi cp311 \
+              -r .ci-artifacts/mwaa-wheel-requirements.txt
           fi
           (
             cd .ci-artifacts/plugins-src
