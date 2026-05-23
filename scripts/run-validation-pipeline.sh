@@ -87,6 +87,8 @@ RESPONSE_JSON="$(mktemp)"
 set +e
 aws lambda invoke \
   --function-name "${CONTROL_PLANE_LAMBDA_NAME}" \
+  --cli-connect-timeout 60 \
+  --cli-read-timeout 900 \
   --cli-binary-format raw-in-base64-out \
   --payload "file://${REQUEST_JSON}" \
   "${RESPONSE_JSON}" >/dev/null
