@@ -14,6 +14,19 @@ TEST_CONFIG = {
 
 
 class CloudStagesTests(unittest.TestCase):
+    def test_task_env_overrides_lakehouse_root_and_warehouse_dir(self) -> None:
+        env = stages.task_env(
+            transformation_version="abc123",
+            lakehouse_root="s3://nyc-data-platform-test/test-runs/run-1",
+        )
+
+        self.assertEqual(env["TRANSFORMATION_VERSION"], "abc123")
+        self.assertEqual(env["LAKEHOUSE_ROOT"], "s3://nyc-data-platform-test/test-runs/run-1")
+        self.assertEqual(
+            env["SPARK_WAREHOUSE_DIR"],
+            "s3a://nyc-data-platform-test/test-runs/run-1/warehouse",
+        )
+
     def test_bronze_command_keeps_stage_local_selectors(self) -> None:
         command = stages.dbt_command("bronze", TEST_CONFIG)
 

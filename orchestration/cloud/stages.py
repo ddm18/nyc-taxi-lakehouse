@@ -383,11 +383,26 @@ def dataset_from_config(config: dict[str, Any]) -> DatasetMonthDTO:
     )
 
 
-def task_env(*, transformation_version: str | None = None) -> dict[str, str]:
+def spark_warehouse_dir(lakehouse_root: str) -> str:
+    normalized_root = lakehouse_root.rstrip("/")
+    warehouse_root = f"{normalized_root}/warehouse"
+    if warehouse_root.startswith("s3://"):
+        return "s3a://" + warehouse_root[len("s3://") :]
+    return warehouse_root
+
+
+def task_env(
+    *,
+    transformation_version: str | None = None,
+    lakehouse_root: str | None = None,
+) -> dict[str, str]:
     env = os.environ.copy()
     env["DBT_PROFILES_DIR"] = str(DBT_PROFILES_DIR)
     if transformation_version is not None:
         env["TRANSFORMATION_VERSION"] = transformation_version
+    if lakehouse_root is not None:
+        env["LAKEHOUSE_ROOT"] = lakehouse_root
+        env["SPARK_WAREHOUSE_DIR"] = spark_warehouse_dir(lakehouse_root)
     return env
 
 
@@ -403,7 +418,10 @@ def stage_reference_data(landing_root: str, transformation_version: str) -> str:
 
     run_command(
         dbt_command("reference_bronze"),
-        env=task_env(transformation_version=transformation_version),
+        env=task_env(
+            transformation_version=transformation_version,
+            lakehouse_root=landing_root,
+        ),
     )
     return landing_root
 
@@ -431,7 +449,8 @@ def run_dbt_stage(stage: str, config: dict[str, Any]) -> None:
         env=task_env(
             transformation_version=str(config["transformation_version"])
             if config.get("transformation_version") is not None
-            else None
+            else None,
+            lakehouse_root=str(config["landing_root"]),
         ),
     )
 
