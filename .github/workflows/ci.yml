@@ -65,6 +65,7 @@ jobs:
               "ingestion/",
               "dbt/",
               "infra/",
+              "scripts/",
               ".github/workflows/",
               "tests/",
           )
