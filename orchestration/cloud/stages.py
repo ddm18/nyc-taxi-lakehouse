@@ -123,6 +123,8 @@ def dbt_command(stage: str, config: dict[str, Any] | None = None) -> list[str]:
             str(DBT_PROJECT_DIR),
             "--profiles-dir",
             str(DBT_PROFILES_DIR),
+            "--indirect-selection",
+            "cautious",
             "--select",
             *[f"+{selector}" for selector in DBT_STAGE_SELECTORS["gold_unified"]],
         ]
@@ -145,6 +147,14 @@ def dbt_command(stage: str, config: dict[str, Any] | None = None) -> list[str]:
         str(DBT_PROJECT_DIR),
         "--profiles-dir",
         str(DBT_PROFILES_DIR),
+        *(
+            [
+                "--indirect-selection",
+                "cautious",
+            ]
+            if subcommand == "build"
+            else []
+        ),
         "--select",
         *selectors,
         "--vars",

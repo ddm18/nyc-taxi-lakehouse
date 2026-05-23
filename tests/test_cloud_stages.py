@@ -24,13 +24,19 @@ class CloudStagesTests(unittest.TestCase):
             command[select_index + 1:vars_index],
             ["yellow_tripdata_raw"],
         )
+        self.assertNotIn("--indirect-selection", command)
 
     def test_silver_command_includes_parent_models_for_isolated_sessions(self) -> None:
         command = stages.dbt_command("silver", TEST_CONFIG)
 
+        indirect_index = command.index("--indirect-selection")
         select_index = command.index("--select")
         vars_index = command.index("--vars")
 
+        self.assertEqual(
+            command[indirect_index:select_index],
+            ["--indirect-selection", "cautious"],
+        )
         self.assertEqual(
             command[select_index + 1:vars_index],
             [
@@ -43,9 +49,14 @@ class CloudStagesTests(unittest.TestCase):
     def test_gold_command_includes_parent_models_for_isolated_sessions(self) -> None:
         command = stages.dbt_command("gold", TEST_CONFIG)
 
+        indirect_index = command.index("--indirect-selection")
         select_index = command.index("--select")
         vars_index = command.index("--vars")
 
+        self.assertEqual(
+            command[indirect_index:select_index],
+            ["--indirect-selection", "cautious"],
+        )
         self.assertEqual(
             command[select_index + 1:vars_index],
             [
