@@ -317,6 +317,7 @@ resource "aws_lambda_function" "control_plane" {
   runtime       = "python3.11"
   handler       = "control_plane_lambda.lambda_handler"
   filename      = data.archive_file.control_plane_lambda.output_path
+  source_code_hash = data.archive_file.control_plane_lambda.output_base64sha256
   timeout       = 900
   memory_size   = 512
 

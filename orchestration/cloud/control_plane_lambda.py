@@ -62,13 +62,6 @@ def _write_report_to_s3(report_key: str, payload: dict[str, Any]) -> str:
     return f"s3://{bucket}/{report_key}"
 
 
-def _parse_run_id(stdout: str) -> str:
-    for line in stdout.splitlines():
-        if "manual__" in line:
-            return line.strip().split()[-1]
-    raise ValueError(f"could not parse DAG run id from output: {stdout}")
-
-
 def _set_airflow_variables(variables: dict[str, Any]) -> list[dict[str, Any]]:
     responses: list[dict[str, Any]] = []
     for key, value in variables.items():
@@ -78,6 +71,38 @@ def _set_airflow_variables(variables: dict[str, Any]) -> list[dict[str, Any]]:
         response["variable"] = str(key)
         responses.append(response)
     return responses
+
+
+def _dag_run_state(dag_id: str, run_id: str) -> dict[str, Any]:
+    response = _airflow_cli_request(
+        "dags list-runs -d " + shlex.quote(dag_id) + " --output json"
+    )
+    runs = json.loads(response["stdout"] or "[]")
+    if not isinstance(runs, list):
+        raise ValueError(f"unexpected dags list-runs output: {response['stdout']}")
+
+    for run in runs:
+        if str(run.get("run_id", "")) == run_id:
+            return {
+                "state": str(run.get("state", "unknown")),
+                "stdout": response["stdout"],
+                "stderr": response["stderr"],
+            }
+
+    raise ValueError(f"could not find DAG run {run_id} in output: {response['stdout']}")
+
+
+def _latest_dag_run_id(dag_id: str) -> str:
+    response = _airflow_cli_request(
+        "dags list-runs -d " + shlex.quote(dag_id) + " --output json"
+    )
+    runs = json.loads(response["stdout"] or "[]")
+    if not isinstance(runs, list) or not runs:
+        raise ValueError(f"could not determine latest DAG run from output: {response['stdout']}")
+    run_id = str(runs[0].get("run_id", "")).strip()
+    if not run_id:
+        raise ValueError(f"latest DAG run did not include run_id: {response['stdout']}")
+    return run_id
 
 
 def lambda_handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
@@ -100,15 +125,15 @@ def lambda_handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
     )
     run_id = event.get("run_id")
     if run_id is None:
-        run_id = _parse_run_id(trigger_response["stdout"])
+        run_id = _latest_dag_run_id(dag_id)
 
     timeout_seconds = int(event.get("timeout_seconds", 900))
     poll_seconds = int(event.get("poll_seconds", 30))
     start = time.time()
     state_payload: dict[str, Any] = {}
     while time.time() - start <= timeout_seconds:
-        state_response = _airflow_cli_request(f"dags state {dag_id} {run_id}")
-        state = state_response["stdout"].strip().splitlines()[-1]
+        state_response = _dag_run_state(dag_id, run_id)
+        state = state_response["state"]
         state_payload = {
             "dag_id": dag_id,
             "run_id": run_id,
