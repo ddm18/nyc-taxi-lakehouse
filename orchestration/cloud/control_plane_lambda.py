@@ -21,6 +21,9 @@ EXPECTED_CLOUD_TASK_IDS = (
     "run_gold",
 )
 
+ACTIVE_DAG_RUN_STATES = {"queued", "running"}
+TERMINAL_DAG_RUN_STATES = {"success", "failed"}
+
 
 def _required_env(name: str) -> str:
     value = os.getenv(name, "").strip()
@@ -140,34 +143,131 @@ def _wait_for_cloud_dag_ready(
     )
 
 
-def _dag_run_state(dag_id: str, run_id: str) -> dict[str, Any]:
+def _list_dag_runs(dag_id: str) -> list[dict[str, Any]]:
     response = _airflow_cli_request(
         "dags list-runs -d " + shlex.quote(dag_id) + " --output json"
     )
     runs = json.loads(response["stdout"] or "[]")
     if not isinstance(runs, list):
         raise ValueError(f"unexpected dags list-runs output: {response['stdout']}")
+    return runs
 
+
+def _dag_run_state(dag_id: str, run_id: str) -> dict[str, Any]:
+    runs = _list_dag_runs(dag_id)
     for run in runs:
         if str(run.get("run_id", "")) == run_id:
             return {
                 "state": str(run.get("state", "unknown")),
-                "stdout": response["stdout"],
-                "stderr": response["stderr"],
+                "stdout": json.dumps(runs),
+                "stderr": "",
             }
 
-    raise ValueError(f"could not find DAG run {run_id} in output: {response['stdout']}")
+    raise ValueError(f"could not find DAG run {run_id} in output: {json.dumps(runs)}")
+
+
+def _active_dag_runs(
+    dag_id: str,
+    *,
+    exclude_run_id: str | None = None,
+) -> list[dict[str, str]]:
+    active_runs: list[dict[str, str]] = []
+    for run in _list_dag_runs(dag_id):
+        run_id = str(run.get("run_id", "")).strip()
+        state = str(run.get("state", "unknown")).strip().lower()
+        if not run_id or run_id == exclude_run_id:
+            continue
+        if state in ACTIVE_DAG_RUN_STATES:
+            active_runs.append(
+                {
+                    "run_id": run_id,
+                    "state": state,
+                }
+            )
+    return active_runs
+
+
+def _assert_no_active_dag_runs(
+    dag_id: str,
+    *,
+    exclude_run_id: str | None = None,
+) -> None:
+    active_runs = _active_dag_runs(dag_id, exclude_run_id=exclude_run_id)
+    if not active_runs:
+        return
+
+    rendered = ", ".join(
+        f"{run['run_id']} ({run['state']})" for run in active_runs
+    )
+    raise ValueError(
+        f"DAG {dag_id} already has active runs. Resolve or wait for: {rendered}"
+    )
 
 
 def _generated_run_id() -> str:
     return "manual__" + datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S+00:00")
 
 
+def _resolve_operation(event: dict[str, Any]) -> str:
+    if bool(event.get("configure_only", False)):
+        return "configure"
+    operation = str(event.get("operation", "trigger_and_wait")).strip().lower()
+    if operation not in {"configure", "trigger", "status", "trigger_and_wait"}:
+        raise ValueError(f"unsupported operation: {operation}")
+    return operation
+
+
+def _report_if_terminal_state(
+    *,
+    report_key: str | None,
+    state_payload: dict[str, Any],
+) -> str:
+    if not report_key:
+        return ""
+    if str(state_payload.get("state", "")).lower() not in TERMINAL_DAG_RUN_STATES:
+        return ""
+    return _write_report_to_s3(report_key, state_payload)
+
+
 def lambda_handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
     dag_id = event.get("dag_id", _required_env("MWAA_DAG_ID"))
+    operation = _resolve_operation(event)
+
+    if operation == "status":
+        run_id = str(event.get("run_id", "")).strip()
+        if not run_id:
+            raise ValueError("run_id is required for status operation")
+
+        state_payload = {
+            "dag_id": dag_id,
+            "run_id": run_id,
+            "state": "queued",
+            "stdout": "",
+            "stderr": "",
+        }
+        try:
+            state_payload = _dag_run_state(dag_id, run_id)
+            state_payload["dag_id"] = dag_id
+            state_payload["run_id"] = run_id
+        except ValueError as exc:
+            if f"could not find DAG run {run_id}" not in str(exc):
+                raise
+        report_uri = _report_if_terminal_state(
+            report_key=str(event.get("report_key", "")).strip() or None,
+            state_payload=state_payload,
+        )
+        return {
+            "dag_id": dag_id,
+            "run_id": run_id,
+            "report_s3_uri": report_uri,
+            "state": state_payload["state"],
+            "stdout": state_payload["stdout"],
+            "stderr": state_payload["stderr"],
+        }
+
     variable_updates = _set_airflow_variables(event.get("airflow_variables", {}))
     dag_readiness = _wait_for_cloud_dag_ready(dag_id)
-    if bool(event.get("configure_only", False)):
+    if operation == "configure":
         return {
             "dag_id": dag_id,
             "configured_only": True,
@@ -178,6 +278,7 @@ def lambda_handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
     run_conf = event.get("conf", {})
     run_id = str(event.get("run_id") or _generated_run_id())
     unpause_response = _ensure_dag_unpaused(dag_id)
+    _assert_no_active_dag_runs(dag_id, exclude_run_id=run_id)
     trigger_response = _airflow_cli_request(
         "dags trigger "
         + dag_id
@@ -187,6 +288,40 @@ def lambda_handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
         + json.dumps(run_conf, sort_keys=True)
         + "'"
     )
+
+    report_key = str(event.get("report_key", "")).strip() or None
+    if operation == "trigger":
+        state_payload = {
+            "dag_id": dag_id,
+            "run_id": run_id,
+            "state": "queued",
+            "stdout": "",
+            "stderr": "",
+        }
+        try:
+            state_payload = _dag_run_state(dag_id, run_id)
+            state_payload["dag_id"] = dag_id
+            state_payload["run_id"] = run_id
+        except ValueError as exc:
+            if f"could not find DAG run {run_id}" not in str(exc):
+                raise
+
+        report_uri = _report_if_terminal_state(
+            report_key=report_key,
+            state_payload=state_payload,
+        )
+        return {
+            "dag_id": dag_id,
+            "run_id": run_id,
+            "report_s3_uri": report_uri,
+            "state": state_payload["state"],
+            "variable_updates": variable_updates,
+            "dag_readiness": dag_readiness,
+            "unpause_stdout": unpause_response["stdout"],
+            "unpause_stderr": unpause_response["stderr"],
+            "trigger_stdout": trigger_response["stdout"],
+            "trigger_stderr": trigger_response["stderr"],
+        }
 
     timeout_seconds = int(event.get("timeout_seconds", 900))
     poll_seconds = int(event.get("poll_seconds", 30))
@@ -208,12 +343,14 @@ def lambda_handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
             "stdout": state_response["stdout"],
             "stderr": state_response["stderr"],
         }
-        if state in {"success", "failed"}:
+        if state in TERMINAL_DAG_RUN_STATES:
             break
         time.sleep(poll_seconds)
 
-    report_key = event.get("report_key", f"control-plane/{dag_id}/{run_id}.json")
-    report_uri = _write_report_to_s3(report_key, state_payload)
+    report_uri = _write_report_to_s3(
+        str(event.get("report_key", f"control-plane/{dag_id}/{run_id}.json")),
+        state_payload,
+    )
     return {
         "dag_id": dag_id,
         "run_id": run_id,

@@ -8,7 +8,7 @@ Components:
 - `task_runner.py`: ECS entrypoint for reference bootstrap, pipeline stages,
   RDS schema initialization, and final reporting.
 - `control_plane_lambda.py`: Lambda entrypoint used inside the VPC to trigger
-  and monitor MWAA DAG runs for private-only environments.
+  and query MWAA DAG runs for private-only environments.
 - `audit.py`: small PostgreSQL audit helpers used by ECS tasks.
 - `sql/pipeline_run_audit.sql`: schema for the RDS audit table.
 

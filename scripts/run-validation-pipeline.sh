@@ -61,47 +61,131 @@ DATA_BUCKET_NAME="${NAME_PREFIX}"
 ARTIFACT_BUCKET_NAME="${NAME_PREFIX}-artifacts"
 CONTROL_PLANE_LAMBDA_NAME="${NAME_PREFIX}-control-plane"
 TEST_RUN_RECORD_URI="s3://${ARTIFACT_BUCKET_NAME}/releases/test-runs/${COMMIT_SHA}.json"
+POLL_SECONDS=30
+MAX_WAIT_SECONDS=2700
 
 aws lambda get-function --function-name "${CONTROL_PLANE_LAMBDA_NAME}" >/dev/null
 aws s3api head-bucket --bucket "${DATA_BUCKET_NAME}" >/dev/null
 aws s3api head-bucket --bucket "${ARTIFACT_BUCKET_NAME}" >/dev/null
 
-REQUEST_JSON="$(mktemp)"
-cat > "${REQUEST_JSON}" <<EOF
+STATUS="failed"
+REPORT_S3_URI=""
+RUN_ID=""
+LANDING_ROOT=""
+ERROR_MESSAGE=""
+
+invoke_control_plane() {
+  local request_json="$1"
+  local response_json="$2"
+  local metadata_json
+
+  set +e
+  metadata_json="$(aws lambda invoke \
+    --function-name "${CONTROL_PLANE_LAMBDA_NAME}" \
+    --cli-connect-timeout 60 \
+    --cli-read-timeout 900 \
+    --cli-binary-format raw-in-base64-out \
+    --payload "file://${request_json}" \
+    "${response_json}")"
+  local lambda_exit_code=$?
+  set -e
+
+  if [ "${lambda_exit_code}" -ne 0 ]; then
+    ERROR_MESSAGE="Lambda invocation failed with exit code ${lambda_exit_code}"
+    return 1
+  fi
+
+  local function_error
+  function_error="$(printf '%s' "${metadata_json}" | jq -r '.FunctionError // empty')"
+  if [ -n "${function_error}" ]; then
+    ERROR_MESSAGE="$(jq -r '.errorMessage // "Control-plane lambda reported an error"' "${response_json}")"
+    return 1
+  fi
+
+  return 0
+}
+
+SHORT_SHA="$(printf '%.12s' "${COMMIT_SHA}")"
+RUN_SUFFIX="$(date -u +%Y%m%dT%H%M%SZ)"
+if [ -n "${GITHUB_RUN_ID:-}" ]; then
+  RUN_SUFFIX="${GITHUB_RUN_ID}_${RUN_SUFFIX}"
+fi
+RUN_ID="validation__${SHORT_SHA}__${RUN_SUFFIX}"
+LANDING_ROOT="s3://${DATA_BUCKET_NAME}/test-runs/${COMMIT_SHA}/${RUN_ID}"
+REPORT_KEY="control-plane/test/${COMMIT_SHA}/${RUN_ID}.json"
+
+TRIGGER_REQUEST_JSON="$(mktemp)"
+cat > "${TRIGGER_REQUEST_JSON}" <<EOF
 {
+  "operation": "trigger",
   "dag_id": "nyc_taxi_pipeline",
+  "run_id": "${RUN_ID}",
   "conf": {
     "service": "yellow",
     "year": 2018,
     "month": 1,
-    "landing_root": "s3://${DATA_BUCKET_NAME}/test",
+    "landing_root": "${LANDING_ROOT}",
     "transformation_version": "${COMMIT_SHA}"
   },
-  "timeout_seconds": 840,
-  "poll_seconds": 30,
-  "report_key": "control-plane/test/${COMMIT_SHA}.json"
+  "report_key": "${REPORT_KEY}"
 }
 EOF
 
-RESPONSE_JSON="$(mktemp)"
-set +e
-aws lambda invoke \
-  --function-name "${CONTROL_PLANE_LAMBDA_NAME}" \
-  --cli-connect-timeout 60 \
-  --cli-read-timeout 900 \
-  --cli-binary-format raw-in-base64-out \
-  --payload "file://${REQUEST_JSON}" \
-  "${RESPONSE_JSON}" >/dev/null
-LAMBDA_EXIT_CODE=$?
-set -e
+TRIGGER_RESPONSE_JSON="$(mktemp)"
+if invoke_control_plane "${TRIGGER_REQUEST_JSON}" "${TRIGGER_RESPONSE_JSON}"; then
+  RUN_ID="$(jq -r '.run_id // empty' "${TRIGGER_RESPONSE_JSON}")"
+  if [ -z "${RUN_ID}" ]; then
+    ERROR_MESSAGE="Control-plane trigger response did not contain a run_id"
+  fi
+fi
 
-STATUS="failed"
-REPORT_S3_URI=""
-RUN_ID=""
-if [ "${LAMBDA_EXIT_CODE}" -eq 0 ]; then
-  STATUS="$(jq -r '.state // "failed"' "${RESPONSE_JSON}")"
-  REPORT_S3_URI="$(jq -r '.report_s3_uri // empty' "${RESPONSE_JSON}")"
-  RUN_ID="$(jq -r '.run_id // empty' "${RESPONSE_JSON}")"
+if [ -z "${ERROR_MESSAGE}" ]; then
+  DEADLINE_EPOCH="$(( $(date +%s) + MAX_WAIT_SECONDS ))"
+  while [ "$(date +%s)" -le "${DEADLINE_EPOCH}" ]; do
+    STATUS_REQUEST_JSON="$(mktemp)"
+    cat > "${STATUS_REQUEST_JSON}" <<EOF
+{
+  "operation": "status",
+  "dag_id": "nyc_taxi_pipeline",
+  "run_id": "${RUN_ID}",
+  "report_key": "${REPORT_KEY}"
+}
+EOF
+
+    STATUS_RESPONSE_JSON="$(mktemp)"
+    if ! invoke_control_plane "${STATUS_REQUEST_JSON}" "${STATUS_RESPONSE_JSON}"; then
+      rm -f "${STATUS_REQUEST_JSON}" "${STATUS_RESPONSE_JSON}"
+      break
+    fi
+
+    DAG_STATE="$(jq -r '.state // "unknown"' "${STATUS_RESPONSE_JSON}")"
+    REPORT_S3_URI="$(jq -r '.report_s3_uri // empty' "${STATUS_RESPONSE_JSON}")"
+    rm -f "${STATUS_REQUEST_JSON}" "${STATUS_RESPONSE_JSON}"
+
+    case "${DAG_STATE}" in
+      success)
+        STATUS="success"
+        break
+        ;;
+      failed)
+        STATUS="failed"
+        ERROR_MESSAGE="Airflow DAG run ${RUN_ID} finished with state failed"
+        break
+        ;;
+      queued|running)
+        sleep "${POLL_SECONDS}"
+        ;;
+      *)
+        STATUS="failed"
+        ERROR_MESSAGE="Airflow DAG run ${RUN_ID} returned unexpected state ${DAG_STATE}"
+        break
+        ;;
+    esac
+  done
+fi
+
+if [ "${STATUS}" != "success" ] && [ -z "${ERROR_MESSAGE}" ]; then
+  ERROR_MESSAGE="Validation timed out waiting for DAG run ${RUN_ID} to complete"
 fi
 
 RESULT_JSON="$(mktemp)"
@@ -114,6 +198,8 @@ jq -n \
   --arg workflow_run_url "${WORKFLOW_RUN_URL}" \
   --arg report_s3_uri "${REPORT_S3_URI}" \
   --arg dag_run_id "${RUN_ID}" \
+  --arg landing_root "${LANDING_ROOT}" \
+  --arg error_message "${ERROR_MESSAGE}" \
   --arg executed_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
   '{
     environment_name: $environment_name,
@@ -124,6 +210,8 @@ jq -n \
     workflow_run_url: $workflow_run_url,
     report_s3_uri: $report_s3_uri,
     dag_run_id: $dag_run_id,
+    landing_root: $landing_root,
+    error_message: $error_message,
     executed_at: $executed_at
   }' > "${RESULT_JSON}"
 

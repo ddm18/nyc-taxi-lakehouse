@@ -151,8 +151,17 @@ It is separate from deploy on purpose:
 - deploy answers "did the runtime update cleanly?"
 - validation answers "does the deployed pipeline actually run correctly?"
 
-The workflow triggers the cloud DAG through the control-plane Lambda and writes a
-small machine-readable record to:
+The workflow uses the control-plane Lambda as a short-lived broker:
+
+- one call prepares the MWAA runtime and triggers a unique DAG run
+- repeated follow-up calls query the specific `run_id`
+- GitHub Actions owns the long polling so the validation path is not limited by
+  the 15 minute AWS Lambda ceiling
+
+Each validation run uses an isolated S3 landing prefix under the `test`
+environment root so repeated runs do not overlap.
+
+The workflow writes a small machine-readable record to:
 
 - `s3://nyc-data-platform-test-artifacts/releases/test-runs/<commit_sha>.json`
 
