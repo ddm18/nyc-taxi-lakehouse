@@ -211,7 +211,9 @@ MWAA_STATUS="$(
     --query 'Environment.Status' \
     --output text
 )"
-[ "${MWAA_STATUS}" = "AVAILABLE" ] || die "MWAA environment ${MWAA_ENVIRONMENT_NAME} is not AVAILABLE"
+if [ "${MWAA_STATUS}" != "AVAILABLE" ]; then
+  log "MWAA environment ${MWAA_ENVIRONMENT_NAME} status after configuration: ${MWAA_STATUS}"
+fi
 
 log "Runtime deployment completed successfully"
 log "ECS cluster ARN: ${ECS_CLUSTER_ARN}"

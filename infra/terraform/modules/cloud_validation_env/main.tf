@@ -93,6 +93,15 @@ resource "aws_security_group_rule" "mwaa_self_ingress" {
   source_security_group_id = aws_security_group.mwaa.id
 }
 
+resource "aws_security_group_rule" "mwaa_https_from_lambda" {
+  type                     = "ingress"
+  from_port                = 443
+  to_port                  = 443
+  protocol                 = "tcp"
+  security_group_id        = aws_security_group.mwaa.id
+  source_security_group_id = aws_security_group.lambda.id
+}
+
 resource "aws_security_group_rule" "mwaa_all_egress" {
   type              = "egress"
   from_port         = 0
