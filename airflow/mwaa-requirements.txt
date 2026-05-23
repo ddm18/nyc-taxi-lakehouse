@@ -1,2 +1,3 @@
-apache-airflow-providers-amazon==9.16.0
+# MWAA 2.10.3 already includes a compatible Amazon provider.
+# Re-pinning a newer version conflicts with the managed constraints.
 psycopg[binary]==3.2.12
