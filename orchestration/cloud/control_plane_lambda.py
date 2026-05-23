@@ -193,7 +193,13 @@ def lambda_handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
     start = time.time()
     state_payload: dict[str, Any] = {}
     while time.time() - start <= timeout_seconds:
-        state_response = _dag_run_state(dag_id, run_id)
+        try:
+            state_response = _dag_run_state(dag_id, run_id)
+        except ValueError as exc:
+            if f"could not find DAG run {run_id}" not in str(exc):
+                raise
+            time.sleep(poll_seconds)
+            continue
         state = state_response["state"]
         state_payload = {
             "dag_id": dag_id,
