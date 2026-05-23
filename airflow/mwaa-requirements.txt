@@ -1,5 +1,2 @@
-# MWAA 2.10.3 already includes a compatible Amazon provider.
-# Private webservers must install extra packages from bundled wheel files.
---find-links /usr/local/airflow/plugins
---no-index
-psycopg[binary]==3.2.12
+# MWAA only needs the DAG module and cloud stage helpers.
+# Runtime-only modules stay in the ECS image, so no extra MWAA packages are required.

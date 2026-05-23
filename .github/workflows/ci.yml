@@ -218,25 +218,14 @@ jobs:
           mkdir -p .ci-artifacts/deploy-bundle/dags .ci-artifacts/plugins-src
           cp -R airflow/dags/. .ci-artifacts/deploy-bundle/dags/
           cp airflow/mwaa-requirements.txt .ci-artifacts/deploy-bundle/mwaa-requirements.txt
-          cp -R orchestration .ci-artifacts/plugins-src/orchestration
+          mkdir -p .ci-artifacts/plugins-src/orchestration/cloud
+          cp orchestration/__init__.py .ci-artifacts/plugins-src/orchestration/__init__.py
+          cp orchestration/cloud/__init__.py .ci-artifacts/plugins-src/orchestration/cloud/__init__.py
+          cp orchestration/cloud/stages.py .ci-artifacts/plugins-src/orchestration/cloud/stages.py
           cp -R ingestion .ci-artifacts/plugins-src/ingestion
-          grep -vE '^\s*(#|$|--)' airflow/mwaa-requirements.txt > .ci-artifacts/mwaa-wheel-requirements.txt
-          if [ -s .ci-artifacts/mwaa-wheel-requirements.txt ]; then
-            python3 -m pip download \
-              --dest .ci-artifacts/plugins-src \
-              --only-binary=:all: \
-              --platform manylinux2014_x86_64 \
-              --implementation cp \
-              --python-version 3.11 \
-              --abi cp311 \
-              -r .ci-artifacts/mwaa-wheel-requirements.txt
-          fi
           (
             cd .ci-artifacts/plugins-src
             zip -rq ../deploy-bundle/plugins.zip orchestration ingestion
-            if ls *.whl >/dev/null 2>&1; then
-              zip -qg ../deploy-bundle/plugins.zip *.whl
-            fi
           )
           jq -n \
             --arg commit_sha "${GITHUB_SHA}" \
