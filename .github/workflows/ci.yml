@@ -187,6 +187,7 @@ jobs:
       contents: read
       id-token: write
     steps:
+      # Publish one immutable deploy bundle per validated commit.
       - name: Check out repository
         uses: actions/checkout@v4
 
