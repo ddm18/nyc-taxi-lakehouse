@@ -220,9 +220,16 @@ jobs:
           cp airflow/mwaa-requirements.txt .ci-artifacts/deploy-bundle/mwaa-requirements.txt
           cp -R orchestration .ci-artifacts/plugins-src/orchestration
           cp -R ingestion .ci-artifacts/plugins-src/ingestion
+          grep -vE '^\s*(#|$|--)' airflow/mwaa-requirements.txt > .ci-artifacts/mwaa-wheel-requirements.txt
+          if [ -s .ci-artifacts/mwaa-wheel-requirements.txt ]; then
+            python3 -m pip download --dest .ci-artifacts/plugins-src -r .ci-artifacts/mwaa-wheel-requirements.txt
+          fi
           (
             cd .ci-artifacts/plugins-src
             zip -rq ../deploy-bundle/plugins.zip orchestration ingestion
+            if ls *.whl >/dev/null 2>&1; then
+              zip -qg ../deploy-bundle/plugins.zip *.whl
+            fi
           )
           jq -n \
             --arg commit_sha "${GITHUB_SHA}" \

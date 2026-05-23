@@ -1,3 +1,5 @@
 # MWAA 2.10.3 already includes a compatible Amazon provider.
-# Re-pinning a newer version conflicts with the managed constraints.
+# Private webservers must install extra packages from bundled wheel files.
+--find-links /usr/local/airflow/plugins
+--no-index
 psycopg[binary]==3.2.12
