@@ -16,8 +16,8 @@ nyc_taxi_lakehouse:
         javax.jdo.option.ConnectionURL: "jdbc:derby:;databaseName={{ env_var('SPARK_METASTORE_DIR', '/opt/project/.local/spark/local/metastore_db') }};create=true"
         spark.jars.packages: "{{ env_var('SPARK_JARS_PACKAGES', 'io.delta:delta-spark_2.12:3.2.0,org.apache.hadoop:hadoop-aws:3.3.4,com.amazonaws:aws-java-sdk-bundle:1.12.262') }}"
         spark.hadoop.fs.s3a.impl: org.apache.hadoop.fs.s3a.S3AFileSystem
-        spark.hadoop.fs.s3a.aws.credentials.provider: com.amazonaws.auth.profile.ProfileCredentialsProvider,com.amazonaws.auth.DefaultAWSCredentialsProviderChain
+        spark.hadoop.fs.s3a.aws.credentials.provider: "{{ env_var('SPARK_S3A_AWS_CREDENTIALS_PROVIDER', 'com.amazonaws.auth.DefaultAWSCredentialsProviderChain') }}"
         spark.hadoop.fs.s3a.endpoint: "s3.{{ env_var('AWS_REGION', 'eu-west-1') }}.amazonaws.com"
         spark.hadoop.fs.s3a.path.style.access: "false"
         spark.hadoop.fs.s3a.connection.ssl.enabled: "true"
-        spark.hadoop.fs.s3a.aws.profile: "{{ env_var('AWS_PROFILE', 'default') }}"
+        spark.hadoop.fs.s3a.aws.profile: "{{ env_var('AWS_PROFILE', '') }}"
