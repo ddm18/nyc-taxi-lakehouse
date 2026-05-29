@@ -217,11 +217,17 @@ resource "aws_iam_role_policy" "ecs_task" {
     Statement = [
       {
         Effect = "Allow"
-        Action = ["s3:GetObject", "s3:PutObject", "s3:ListBucket"]
+        Action = ["s3:ListBucket"]
         Resource = [
           local.data_bucket_arn,
-          "${local.data_bucket_arn}/*",
           local.artifact_bucket_arn,
+        ]
+      },
+      {
+        Effect = "Allow"
+        Action = ["s3:GetObject", "s3:PutObject", "s3:DeleteObject"]
+        Resource = [
+          "${local.data_bucket_arn}/*",
           "${local.artifact_bucket_arn}/*",
         ]
       },
