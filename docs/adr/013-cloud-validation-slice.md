@@ -46,6 +46,12 @@ Validation scope for the initial slice:
 - reference bootstrap for `taxi_zone_lookup`
 - verification across `landing`, `bronze`, `silver`, `gold`, and `ops`
 
+The initial yellow-only cloud validation slice does not validate unified Gold
+models or Quarantine models that depend on cross-service Gold outputs. Those
+models remain part of the local/full transformation contract and should move
+into the cloud validation contract only when the cloud slice validates all
+required service inputs in the same run.
+
 ## Consequences
 
 - Infrastructure, orchestration, and deployment are validated together instead

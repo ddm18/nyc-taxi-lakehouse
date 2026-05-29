@@ -378,6 +378,47 @@ class ControlPlaneLambdaTests(unittest.TestCase):
         self.assertEqual(result["report_s3_uri"], "s3://reports-bucket/control-plane/test.json")
         write_report.assert_called_once()
 
+    def test_runtime_status_returns_deployment_variables(self) -> None:
+        def fake_cli(command: str) -> dict[str, object]:
+            values = {
+                "variables get PIPELINE_RUNTIME": "cloud",
+                "variables get CLOUD_TASK_DEFINITION_ARN": "task-definition-arn",
+                "variables get CLOUD_CLUSTER_ARN": "cluster-arn",
+                "variables get CLOUD_CONTAINER_NAME": "nyc-pipeline",
+                "variables get CLOUD_ENVIRONMENT_NAME": "test",
+                "variables get TRANSFORMATION_VERSION": "abc123",
+            }
+            if command in values:
+                return {"stdout": values[command] + "\n", "stderr": ""}
+            raise AssertionError(f"Unexpected command: {command}")
+
+        with (
+            mock.patch.dict(
+                "os.environ",
+                {
+                    "AWS_REGION": "eu-west-1",
+                    "MWAA_DAG_ID": "nyc_taxi_pipeline",
+                    "MWAA_ENVIRONMENT_NAME": "test-mwaa",
+                    "CONTROL_PLANE_REPORT_BUCKET": "reports-bucket",
+                },
+                clear=False,
+            ),
+            mock.patch.object(control_plane_lambda, "_airflow_cli_request", side_effect=fake_cli),
+        ):
+            result = control_plane_lambda.lambda_handler(
+                {
+                    "operation": "runtime_status",
+                    "dag_id": "nyc_taxi_pipeline",
+                },
+                None,
+            )
+
+        self.assertEqual(result["airflow_variables"]["TRANSFORMATION_VERSION"], "abc123")
+        self.assertEqual(
+            result["airflow_variables"]["CLOUD_TASK_DEFINITION_ARN"],
+            "task-definition-arn",
+        )
+
     def test_configure_only_does_not_unpause_or_trigger(self) -> None:
         with (
             mock.patch.dict(

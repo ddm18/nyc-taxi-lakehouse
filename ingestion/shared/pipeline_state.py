@@ -7,7 +7,7 @@ import json
 from ingestion.shared.dto import DatasetMonthDTO
 from ingestion.shared.storage_io import read_text, uri_exists, write_text
 
-VALID_PIPELINE_STAGES = ("ingestion", "bronze", "silver", "gold")
+VALID_PIPELINE_STAGES = ("ingestion", "bronze", "silver", "ops", "gold")
 
 
 @dataclass(frozen=True)

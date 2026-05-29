@@ -7,7 +7,7 @@ source "${SCRIPT_DIR}/lib/cicd_common.sh"
 
 usage() {
   cat <<'EOF'
-Usage: scripts/run-validation-pipeline.sh --env test --commit-sha <sha> [--ci-run-url <url>] [--workflow-run-url <url>] [--reason <text>]
+Usage: scripts/run-validation-pipeline.sh --env test --commit-sha <sha> [--expected-image-uri <uri@digest>] [--ci-run-url <url>] [--workflow-run-url <url>] [--reason <text>]
 EOF
 }
 
@@ -16,6 +16,7 @@ COMMIT_SHA=""
 CI_RUN_URL=""
 WORKFLOW_RUN_URL=""
 VALIDATION_REASON="test_validation"
+EXPECTED_IMAGE_URI=""
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
@@ -33,6 +34,10 @@ while [ "$#" -gt 0 ]; do
       ;;
     --workflow-run-url)
       WORKFLOW_RUN_URL="${2:-}"
+      shift 2
+      ;;
+    --expected-image-uri)
+      EXPECTED_IMAGE_URI="${2:-}"
       shift 2
       ;;
     --reason)
@@ -70,6 +75,8 @@ aws s3api head-bucket --bucket "${ARTIFACT_BUCKET_NAME}" >/dev/null
 
 STATUS="failed"
 REPORT_S3_URI=""
+CONTROL_PLANE_REPORT_S3_URI=""
+FINAL_REPORT_S3_URI=""
 RUN_ID=""
 LANDING_ROOT=""
 ERROR_MESSAGE=""
@@ -105,6 +112,36 @@ invoke_control_plane() {
   return 0
 }
 
+RUNTIME_STATUS_REQUEST_JSON="$(mktemp)"
+cat > "${RUNTIME_STATUS_REQUEST_JSON}" <<EOF
+{
+  "operation": "runtime_status",
+  "dag_id": "nyc_taxi_pipeline"
+}
+EOF
+
+RUNTIME_STATUS_RESPONSE_JSON="$(mktemp)"
+if invoke_control_plane "${RUNTIME_STATUS_REQUEST_JSON}" "${RUNTIME_STATUS_RESPONSE_JSON}"; then
+  DEPLOYED_TRANSFORMATION_VERSION="$(jq -r '.airflow_variables.TRANSFORMATION_VERSION // empty' "${RUNTIME_STATUS_RESPONSE_JSON}")"
+  DEPLOYED_TASK_DEFINITION_ARN="$(jq -r '.airflow_variables.CLOUD_TASK_DEFINITION_ARN // empty' "${RUNTIME_STATUS_RESPONSE_JSON}")"
+  if [ "${DEPLOYED_TRANSFORMATION_VERSION}" != "${COMMIT_SHA}" ]; then
+    ERROR_MESSAGE="Test runtime is deployed for TRANSFORMATION_VERSION=${DEPLOYED_TRANSFORMATION_VERSION:-<empty>}, expected ${COMMIT_SHA}. Run scripts/deploy-test.sh ${COMMIT_SHA} first."
+  elif [ -z "${DEPLOYED_TASK_DEFINITION_ARN}" ]; then
+    ERROR_MESSAGE="Test runtime does not expose CLOUD_TASK_DEFINITION_ARN. Run scripts/deploy-test.sh ${COMMIT_SHA} first."
+  elif [ -n "${EXPECTED_IMAGE_URI}" ]; then
+    DEPLOYED_IMAGE_URI="$(
+      aws ecs describe-task-definition \
+        --task-definition "${DEPLOYED_TASK_DEFINITION_ARN}" \
+        --query 'taskDefinition.containerDefinitions[0].image' \
+        --output text
+    )"
+    if [ "${DEPLOYED_IMAGE_URI}" != "${EXPECTED_IMAGE_URI}" ]; then
+      ERROR_MESSAGE="Test runtime image ${DEPLOYED_IMAGE_URI} does not match expected image ${EXPECTED_IMAGE_URI}. Run scripts/deploy-test.sh ${COMMIT_SHA} first."
+    fi
+  fi
+fi
+rm -f "${RUNTIME_STATUS_REQUEST_JSON}" "${RUNTIME_STATUS_RESPONSE_JSON}"
+
 SHORT_SHA="$(printf '%.12s' "${COMMIT_SHA}")"
 RUN_SUFFIX="$(date -u +%Y%m%dT%H%M%SZ)"
 if [ -n "${GITHUB_RUN_ID:-}" ]; then
@@ -113,9 +150,11 @@ fi
 RUN_ID="validation__${SHORT_SHA}__${RUN_SUFFIX}"
 LANDING_ROOT="s3://${DATA_BUCKET_NAME}/test-runs/${COMMIT_SHA}/${RUN_ID}"
 REPORT_KEY="control-plane/test/${COMMIT_SHA}/${RUN_ID}.json"
+FINAL_REPORT_S3_URI="${LANDING_ROOT}/ops/validation_reports/${RUN_ID}.json"
 
 TRIGGER_REQUEST_JSON="$(mktemp)"
-cat > "${TRIGGER_REQUEST_JSON}" <<EOF
+if [ -z "${ERROR_MESSAGE}" ]; then
+  cat > "${TRIGGER_REQUEST_JSON}" <<EOF
 {
   "operation": "trigger",
   "dag_id": "nyc_taxi_pipeline",
@@ -130,9 +169,10 @@ cat > "${TRIGGER_REQUEST_JSON}" <<EOF
   "report_key": "${REPORT_KEY}"
 }
 EOF
+fi
 
 TRIGGER_RESPONSE_JSON="$(mktemp)"
-if invoke_control_plane "${TRIGGER_REQUEST_JSON}" "${TRIGGER_RESPONSE_JSON}"; then
+if [ -z "${ERROR_MESSAGE}" ] && invoke_control_plane "${TRIGGER_REQUEST_JSON}" "${TRIGGER_RESPONSE_JSON}"; then
   RUN_ID="$(jq -r '.run_id // empty' "${TRIGGER_RESPONSE_JSON}")"
   if [ -z "${RUN_ID}" ]; then
     ERROR_MESSAGE="Control-plane trigger response did not contain a run_id"
@@ -159,7 +199,7 @@ EOF
     fi
 
     DAG_STATE="$(jq -r '.state // "unknown"' "${STATUS_RESPONSE_JSON}")"
-    REPORT_S3_URI="$(jq -r '.report_s3_uri // empty' "${STATUS_RESPONSE_JSON}")"
+    CONTROL_PLANE_REPORT_S3_URI="$(jq -r '.report_s3_uri // empty' "${STATUS_RESPONSE_JSON}")"
     rm -f "${STATUS_REQUEST_JSON}" "${STATUS_RESPONSE_JSON}"
 
     case "${DAG_STATE}" in
@@ -188,6 +228,33 @@ if [ "${STATUS}" != "success" ] && [ -z "${ERROR_MESSAGE}" ]; then
   ERROR_MESSAGE="Validation timed out waiting for DAG run ${RUN_ID} to complete"
 fi
 
+if [ "${STATUS}" = "success" ]; then
+  FINAL_REPORT_JSON="$(mktemp)"
+  if aws s3 cp "${FINAL_REPORT_S3_URI}" "${FINAL_REPORT_JSON}" >/dev/null; then
+    if jq -e \
+      --arg commit_sha "${COMMIT_SHA}" \
+      --arg run_id "${RUN_ID}" \
+      '.verification_status == "success"
+        and .transformation_version == $commit_sha
+        and .run_id == $run_id
+        and .metadata.verification_status == "success"
+        and .metadata.landing_object_exists == true
+        and (.metadata.missing_stages | length == 0)
+        and (.metadata.mismatched_transformation_version_stages | length == 0)' \
+      "${FINAL_REPORT_JSON}" >/dev/null
+    then
+      REPORT_S3_URI="${FINAL_REPORT_S3_URI}"
+    else
+      STATUS="failed"
+      ERROR_MESSAGE="Structured validation report did not satisfy promotion checks: ${FINAL_REPORT_S3_URI}"
+    fi
+  else
+    STATUS="failed"
+    ERROR_MESSAGE="Structured validation report was not written: ${FINAL_REPORT_S3_URI}"
+  fi
+  rm -f "${FINAL_REPORT_JSON:-}"
+fi
+
 RESULT_JSON="$(mktemp)"
 jq -n \
   --arg environment_name "${ENVIRONMENT_NAME}" \
@@ -197,6 +264,7 @@ jq -n \
   --arg ci_run_url "${CI_RUN_URL}" \
   --arg workflow_run_url "${WORKFLOW_RUN_URL}" \
   --arg report_s3_uri "${REPORT_S3_URI}" \
+  --arg control_plane_report_s3_uri "${CONTROL_PLANE_REPORT_S3_URI}" \
   --arg dag_run_id "${RUN_ID}" \
   --arg landing_root "${LANDING_ROOT}" \
   --arg error_message "${ERROR_MESSAGE}" \
@@ -209,6 +277,7 @@ jq -n \
     ci_run_url: $ci_run_url,
     workflow_run_url: $workflow_run_url,
     report_s3_uri: $report_s3_uri,
+    control_plane_report_s3_uri: $control_plane_report_s3_uri,
     dag_run_id: $dag_run_id,
     landing_root: $landing_root,
     error_message: $error_message,
@@ -224,5 +293,8 @@ fi
 log "Validation run completed successfully"
 log "Record: ${TEST_RUN_RECORD_URI}"
 if [ -n "${REPORT_S3_URI}" ]; then
-  log "Control-plane report: ${REPORT_S3_URI}"
+  log "Structured validation report: ${REPORT_S3_URI}"
+fi
+if [ -n "${CONTROL_PLANE_REPORT_S3_URI}" ]; then
+  log "Control-plane report: ${CONTROL_PLANE_REPORT_S3_URI}"
 fi

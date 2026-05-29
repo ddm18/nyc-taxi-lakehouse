@@ -19,6 +19,7 @@ EXPECTED_CLOUD_TASK_IDS = (
     "run_bronze",
     "run_silver",
     "run_gold",
+    "write_final_report",
 )
 
 ACTIVE_DAG_RUN_STATES = {"queued", "running"}
@@ -85,6 +86,18 @@ def _set_airflow_variables(variables: dict[str, Any]) -> list[dict[str, Any]]:
         response["variable"] = str(key)
         responses.append(response)
     return responses
+
+
+def _get_airflow_variable(name: str) -> str:
+    response = _airflow_cli_request("variables get " + shlex.quote(name))
+    return response["stdout"].strip()
+
+
+def _get_airflow_variables(names: tuple[str, ...]) -> dict[str, str]:
+    values: dict[str, str] = {}
+    for name in names:
+        values[name] = _get_airflow_variable(name)
+    return values
 
 
 def _ensure_dag_unpaused(dag_id: str) -> dict[str, Any]:
@@ -212,7 +225,7 @@ def _resolve_operation(event: dict[str, Any]) -> str:
     if bool(event.get("configure_only", False)):
         return "configure"
     operation = str(event.get("operation", "trigger_and_wait")).strip().lower()
-    if operation not in {"configure", "trigger", "status", "trigger_and_wait"}:
+    if operation not in {"configure", "runtime_status", "trigger", "status", "trigger_and_wait"}:
         raise ValueError(f"unsupported operation: {operation}")
     return operation
 
@@ -263,6 +276,20 @@ def lambda_handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
             "state": state_payload["state"],
             "stdout": state_payload["stdout"],
             "stderr": state_payload["stderr"],
+        }
+
+    if operation == "runtime_status":
+        variable_names = (
+            "PIPELINE_RUNTIME",
+            "CLOUD_TASK_DEFINITION_ARN",
+            "CLOUD_CLUSTER_ARN",
+            "CLOUD_CONTAINER_NAME",
+            "CLOUD_ENVIRONMENT_NAME",
+            "TRANSFORMATION_VERSION",
+        )
+        return {
+            "dag_id": dag_id,
+            "airflow_variables": _get_airflow_variables(variable_names),
         }
 
     variable_updates = _set_airflow_variables(event.get("airflow_variables", {}))

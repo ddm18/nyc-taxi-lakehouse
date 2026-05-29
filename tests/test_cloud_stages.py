@@ -1,7 +1,11 @@
 from __future__ import annotations
 
 import unittest
+from pathlib import Path
+from tempfile import TemporaryDirectory
+from unittest import mock
 
+from ingestion.shared.pipeline_state import read_pipeline_stage_state
 from orchestration.cloud import stages
 
 
@@ -78,6 +82,84 @@ class CloudStagesTests(unittest.TestCase):
                 "+yellow_hourly_zone_metrics_v1",
             ],
         )
+
+    def test_default_data_interval_end_is_exclusive_month_boundary(self) -> None:
+        self.assertEqual(stages.default_data_interval_end(2018, 1), "2018-02-01T00:00:00")
+        self.assertEqual(stages.default_data_interval_end(2018, 12), "2019-01-01T00:00:00")
+
+    def test_run_pipeline_stage_honors_bronze_start_stage(self) -> None:
+        config = {
+            **TEST_CONFIG,
+            "start_stage": "bronze",
+            "transformation_version": "abc123",
+        }
+
+        with mock.patch.object(stages, "ingest_dataset_month") as ingest_dataset_month:
+            result = stages.run_pipeline_stage("ingestion", config)
+
+        ingest_dataset_month.assert_not_called()
+        self.assertEqual(result["_skipped_stages"], ["ingestion"])
+
+    def test_silver_completion_records_ops_state(self) -> None:
+        with TemporaryDirectory() as tmpdir:
+            config = {
+                **TEST_CONFIG,
+                "landing_root": tmpdir,
+                "transformation_version": "abc123",
+                "data_interval_start": None,
+                "data_interval_end": "2018-02-01T00:00:00",
+            }
+
+            stages.record_stage_completion(
+                config=config,
+                stage="silver",
+                dag_id="dag",
+                run_id="run",
+                task_id="task",
+            )
+            ops_state = read_pipeline_stage_state(
+                lakehouse_root=tmpdir,
+                dataset=stages.dataset_from_config(config),
+                stage="ops",
+            )
+
+        self.assertIsNotNone(ops_state)
+        self.assertEqual(ops_state.transformation_version, "abc123")
+
+    def test_build_validation_metadata_requires_landing_and_stage_states(self) -> None:
+        with TemporaryDirectory() as tmpdir:
+            landing_file = (
+                Path(tmpdir)
+                / "landing"
+                / "yellow"
+                / "year=2018"
+                / "month=01"
+                / "yellow_tripdata_2018-01.parquet"
+            )
+            landing_file.parent.mkdir(parents=True)
+            landing_file.write_bytes(b"parquet-placeholder")
+            config = {
+                **TEST_CONFIG,
+                "landing_root": tmpdir,
+                "transformation_version": "abc123",
+                "data_interval_start": None,
+                "data_interval_end": "2018-02-01T00:00:00",
+            }
+            for stage in ("ingestion", "bronze", "silver", "gold"):
+                stages.record_stage_completion(
+                    config=config,
+                    stage=stage,
+                    dag_id="dag",
+                    run_id="run",
+                    task_id=f"run_{stage}",
+                )
+
+            metadata = stages.build_validation_metadata(config=config)
+
+        self.assertEqual(metadata["verification_status"], "success")
+        self.assertTrue(metadata["landing_object_exists"])
+        self.assertEqual(metadata["missing_stages"], [])
+        self.assertEqual(metadata["mismatched_transformation_version_stages"], [])
 
 
 if __name__ == "__main__":

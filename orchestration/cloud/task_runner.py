@@ -7,13 +7,14 @@ from typing import Any
 from ingestion.shared.storage_io import write_json
 from orchestration.cloud import audit
 from orchestration.cloud.stages import (
+    CLOUD_VALIDATION_EXPECTED_STAGES,
+    build_validation_metadata,
     default_data_interval_end,
     parse_json_payload,
     record_stage_completion,
-    run_dbt_stage,
+    run_pipeline_stage,
     stage_reference_data,
     transformation_version_from_env,
-    ingest_dataset_month,
 )
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -50,6 +51,12 @@ def parse_args() -> argparse.Namespace:
     report_parser.add_argument("--dag-id", required=True)
     report_parser.add_argument("--run-id", required=True)
     report_parser.add_argument("--transformation-version")
+    report_parser.add_argument(
+        "--expected-stage",
+        action="append",
+        default=[],
+        choices=("ingestion", "bronze", "silver", "ops", "gold"),
+    )
 
     return parser.parse_args()
 
@@ -69,20 +76,18 @@ def command_run_stage(args: argparse.Namespace) -> int:
             month=int(config["month"]),
         )
 
-    if args.stage == "ingestion":
-        ingest_dataset_month(config)
-    else:
-        run_dbt_stage(args.stage, config)
+    config = run_pipeline_stage(args.stage, config)
 
-    record_stage_completion(
-        config=config,
-        stage=args.stage,
-        dag_id=args.dag_id,
-        run_id=args.run_id,
-        task_id=args.task_id,
-        data_interval_start=args.data_interval_start,
-        data_interval_end=args.data_interval_end,
-    )
+    if args.stage in set(config.get("_completed_stages", [])):
+        record_stage_completion(
+            config=config,
+            stage=args.stage,
+            dag_id=args.dag_id,
+            run_id=args.run_id,
+            task_id=args.task_id,
+            data_interval_start=args.data_interval_start,
+            data_interval_end=args.data_interval_end,
+        )
     return 0
 
 
@@ -98,6 +103,13 @@ def command_write_final_report(args: argparse.Namespace) -> int:
     transformation_version = args.transformation_version or str(
         config.get("transformation_version", transformation_version_from_env())
     )
+    expected_stages = tuple(args.expected_stage or CLOUD_VALIDATION_EXPECTED_STAGES)
+    validation_metadata = build_validation_metadata(
+        config=config,
+        expected_stages=expected_stages,
+    )
+    metadata.update(validation_metadata)
+    verification_status = str(validation_metadata["verification_status"])
     report_payload: dict[str, Any] = {
         "environment_name": args.environment_name,
         "service_name": str(config["service"]),
@@ -106,12 +118,14 @@ def command_write_final_report(args: argparse.Namespace) -> int:
         "transformation_version": transformation_version,
         "dag_id": args.dag_id,
         "run_id": args.run_id,
-        "verification_status": args.verification_status,
+        "verification_status": verification_status,
         "report_s3_uri": args.report_s3_uri,
         "metadata": metadata,
     }
     write_json(args.report_s3_uri, report_payload)
     audit.insert_pipeline_run_audit(report_payload)
+    if verification_status != args.verification_status:
+        return 1
     return 0
 
 

@@ -81,8 +81,25 @@ jobs:
         run: |
           TEST_RUN_S3_URI="s3://${TEST_ARTIFACT_BUCKET_NAME}/releases/test-runs/${COMMIT_SHA}.json"
           aws s3 cp "${TEST_RUN_S3_URI}" /tmp/test-run-record.json
-          jq -e --arg commit_sha "${COMMIT_SHA}" '.status == "success" and .commit_sha == $commit_sha' /tmp/test-run-record.json >/dev/null
-          echo "TEST_RUN_S3_URI=${TEST_RUN_S3_URI}" >> "$GITHUB_ENV"
+          jq -e --arg commit_sha "${COMMIT_SHA}" \
+            '.status == "success"
+              and .commit_sha == $commit_sha
+              and (.report_s3_uri | startswith("s3://"))' \
+            /tmp/test-run-record.json >/dev/null
+          VALIDATION_REPORT_S3_URI="$(jq -r '.report_s3_uri' /tmp/test-run-record.json)"
+          aws s3 cp "${VALIDATION_REPORT_S3_URI}" /tmp/test-validation-report.json
+          jq -e --arg commit_sha "${COMMIT_SHA}" \
+            '.verification_status == "success"
+              and .transformation_version == $commit_sha
+              and .metadata.verification_status == "success"
+              and .metadata.landing_object_exists == true
+              and (.metadata.missing_stages | length == 0)
+              and (.metadata.mismatched_transformation_version_stages | length == 0)' \
+            /tmp/test-validation-report.json >/dev/null
+          {
+            echo "TEST_RUN_S3_URI=${TEST_RUN_S3_URI}"
+            echo "VALIDATION_REPORT_S3_URI=${VALIDATION_REPORT_S3_URI}"
+          } >> "$GITHUB_ENV"
 
       - name: Download deploy bundle from CI
         uses: actions/download-artifact@v4
@@ -138,6 +155,7 @@ jobs:
           - Image URI: ${IMAGE_URI}
           - Transformation version: ${COMMIT_SHA}
           - Test validation record: ${TEST_RUN_S3_URI}
+          - Structured validation report: ${VALIDATION_REPORT_S3_URI}
           - CI run: ${CI_RUN_URL}
           - Prod workflow run: https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}
           EOF

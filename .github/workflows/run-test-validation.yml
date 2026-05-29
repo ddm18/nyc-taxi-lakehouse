@@ -71,6 +71,21 @@ jobs:
         run: |
           jq -e '.deploy_relevant == true' .ci-input/cicd-metadata/cicd-metadata.json >/dev/null
 
+      - name: Download deploy bundle from CI
+        uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          run-id: ${{ steps.resolve.outputs.ci_run_id }}
+          name: deploy-bundle
+          path: .ci-input/deploy-bundle
+
+      - name: Verify deploy bundle metadata
+        id: bundle
+        run: |
+          test -f .ci-input/deploy-bundle/build-metadata.json
+          jq -e --arg commit_sha "${{ steps.resolve.outputs.commit_sha }}" '.commit_sha == $commit_sha' .ci-input/deploy-bundle/build-metadata.json >/dev/null
+          echo "image_uri=$(jq -r '.image_uri' .ci-input/deploy-bundle/build-metadata.json)" >> "$GITHUB_OUTPUT"
+
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -82,6 +97,7 @@ jobs:
           scripts/run-validation-pipeline.sh \
             --env test \
             --commit-sha "${{ steps.resolve.outputs.commit_sha }}" \
+            --expected-image-uri "${{ steps.bundle.outputs.image_uri }}" \
             --ci-run-url "${{ steps.resolve.outputs.ci_run_url }}" \
             --workflow-run-url "https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" \
             --reason "${{ github.event.inputs.reason }}"

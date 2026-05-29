@@ -21,9 +21,9 @@ from orchestration.cloud.stages import (
     stage_reference_data,
     task_env,
     transformation_version_from_env,
-    ingest_dataset_month,
     record_stage_completion,
-    run_dbt_stage,
+    run_pipeline_stage,
+    stage_was_completed,
 )
 
 def _airflow_variable(name: str) -> str:
@@ -56,6 +56,7 @@ CLOUD_CLUSTER_ARN = _runtime_setting("CLOUD_CLUSTER_ARN")
 CLOUD_CONTAINER_NAME = _runtime_setting("CLOUD_CONTAINER_NAME", "nyc-pipeline")
 CLOUD_SUBNET_IDS = _runtime_csv("CLOUD_SUBNET_IDS")
 CLOUD_SECURITY_GROUP_IDS = _runtime_csv("CLOUD_SECURITY_GROUP_IDS")
+CLOUD_ENVIRONMENT_NAME = _runtime_setting("CLOUD_ENVIRONMENT_NAME", "cloud")
 
 
 def _transformation_version() -> str:
@@ -221,15 +222,10 @@ def nyc_taxi_pipeline_local():
         return _resolve_manual_or_auto_config(service_name)
 
     @task
-    def ingest_landing(config: dict[str, Any] | None) -> dict[str, Any] | None:
-        if config is None:
-            return None
-        ingest_dataset_month(config)
-        return config
-
-    @task
     def record_stage_state(config: dict[str, Any] | None, stage: str) -> str | None:
         if config is None:
+            return None
+        if not stage_was_completed(config, stage):
             return None
 
         context = get_current_context()
@@ -246,11 +242,7 @@ def nyc_taxi_pipeline_local():
     def run_stage_task(stage: str, config: dict[str, Any] | None) -> dict[str, Any] | None:
         if config is None:
             return None
-        if stage == "ingestion":
-            ingest_dataset_month(config)
-        else:
-            run_dbt_stage(stage, config)
-        return config
+        return run_pipeline_stage(stage, config)
 
     @task
     def run_unified_gold(
@@ -268,7 +260,9 @@ def nyc_taxi_pipeline_local():
     reference_data = stage_reference_data_task()
 
     yellow_config = resolve_service_config.override(task_id="resolve_yellow_config")("yellow")
-    yellow_landing = ingest_landing.override(task_id="ingest_yellow_landing")(yellow_config)
+    yellow_landing = run_stage_task.override(task_id="run_yellow_ingestion")(
+        "ingestion", yellow_config
+    )
     yellow_ingestion_state = record_stage_state.override(task_id="record_yellow_ingestion_state")(
         yellow_landing, "ingestion"
     )
@@ -286,7 +280,9 @@ def nyc_taxi_pipeline_local():
     )
 
     green_config = resolve_service_config.override(task_id="resolve_green_config")("green")
-    green_landing = ingest_landing.override(task_id="ingest_green_landing")(green_config)
+    green_landing = run_stage_task.override(task_id="run_green_ingestion")(
+        "ingestion", green_config
+    )
     green_ingestion_state = record_stage_state.override(task_id="record_green_ingestion_state")(
         green_landing, "ingestion"
     )
@@ -394,8 +390,40 @@ def nyc_taxi_pipeline_cloud():
         task_id="run_gold",
         command=_cloud_config_command("gold", "resolve_service_config", "run_gold"),
     )
+    final_report = _cloud_ecs_task(
+        task_id="write_final_report",
+        command=[
+            "write-final-report",
+            "--report-s3-uri",
+            "{{ ti.xcom_pull(task_ids='resolve_runtime_context')['landing_root'] }}/ops/validation_reports/{{ run_id }}.json",
+            "--environment-name",
+            CLOUD_ENVIRONMENT_NAME,
+            "--artifact-digest",
+            CLOUD_TASK_DEFINITION_ARN,
+            "--verification-status",
+            "success",
+            "--config-json",
+            "{{ ti.xcom_pull(task_ids='resolve_service_config') | tojson }}",
+            "--dag-id",
+            "{{ dag.dag_id }}",
+            "--run-id",
+            "{{ run_id }}",
+            "--transformation-version",
+            "{{ ti.xcom_pull(task_ids='resolve_runtime_context')['transformation_version'] }}",
+            "--expected-stage",
+            "ingestion",
+            "--expected-stage",
+            "bronze",
+            "--expected-stage",
+            "silver",
+            "--expected-stage",
+            "ops",
+            "--expected-stage",
+            "gold",
+        ],
+    )
 
-    runtime_context >> service_config >> init_audit_db >> reference >> ingestion >> bronze >> silver >> gold
+    runtime_context >> service_config >> init_audit_db >> reference >> ingestion >> bronze >> silver >> gold >> final_report
 
 
 if PIPELINE_RUNTIME == "cloud":

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import asdict
 from datetime import datetime
 import json
 import os
@@ -25,7 +26,7 @@ from ingestion.shared.runtime_config import (
     get_transformation_version_from_env,
 )
 from ingestion.shared.source_metadata import metadata_has_changed, read_source_metadata_current
-from ingestion.shared.source_config import build_source_url, load_source_config
+from ingestion.shared.source_config import build_landing_object_uri, build_source_url, load_source_config
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DBT_PROJECT_DIR = PROJECT_ROOT / "dbt" / "nyc_taxi_lakehouse"
@@ -69,6 +70,9 @@ REFERENCE_BOOTSTRAP_FILES = (
     },
 )
 SOURCE_METADATA_AUDIT_MONTHS = 12
+PIPELINE_STAGE_ORDER = ("ingestion", "bronze", "silver", "gold")
+PIPELINE_START_STAGES = frozenset(PIPELINE_STAGE_ORDER)
+CLOUD_VALIDATION_EXPECTED_STAGES = ("ingestion", "bronze", "silver", "ops", "gold")
 
 
 def lakehouse_root_from_env() -> str:
@@ -166,6 +170,37 @@ def selected_services(service_selector: str) -> set[str]:
     if service_selector == "all":
         return {"yellow", "green"}
     return {service_selector}
+
+
+def stage_should_run(config: dict[str, Any], stage: str) -> bool:
+    start_stage = str(config.get("start_stage", "ingestion"))
+    if start_stage not in PIPELINE_START_STAGES:
+        raise ValueError(f"unsupported start_stage: {start_stage}")
+    if stage not in PIPELINE_STAGE_ORDER:
+        raise ValueError(f"unsupported pipeline stage: {stage}")
+    return PIPELINE_STAGE_ORDER.index(stage) >= PIPELINE_STAGE_ORDER.index(start_stage)
+
+
+def mark_stage_result(config: dict[str, Any], stage: str, status: str) -> dict[str, Any]:
+    updated = dict(config)
+    completed = set(updated.get("_completed_stages", []))
+    skipped = set(updated.get("_skipped_stages", []))
+    if status == "completed":
+        completed.add(stage)
+    elif status == "skipped":
+        skipped.add(stage)
+    else:
+        raise ValueError(f"unsupported stage status: {status}")
+    updated["_completed_stages"] = sorted(completed)
+    updated["_skipped_stages"] = sorted(skipped)
+    return updated
+
+
+def stage_was_completed(config: dict[str, Any], stage: str) -> bool:
+    completed = config.get("_completed_stages")
+    if completed is None:
+        return stage_should_run(config, stage)
+    return stage in set(completed)
 
 
 def iterate_dataset_months(start_year: int, end_year: int, end_month: int) -> list[tuple[int, int]]:
@@ -313,6 +348,7 @@ def build_auto_config(
                     "reprocess_reason": "source_republish",
                     "start_stage": "ingestion",
                     "requested_by": "airflow_source_audit",
+                    "transformation_version": transformation_version,
                     "source_etag": source_metadata.get("etag"),
                     "source_last_modified": source_metadata.get("last_modified"),
                     "source_content_length": source_metadata.get("content_length"),
@@ -343,6 +379,7 @@ def build_auto_config(
                 "reprocess_reason": "transformation_version_changed",
                 "start_stage": "bronze",
                 "requested_by": "airflow_transformation_version",
+                "transformation_version": transformation_version,
                 "source_etag": source_metadata.get("etag"),
                 "source_last_modified": source_metadata.get("last_modified"),
                 "source_content_length": source_metadata.get("content_length"),
@@ -357,6 +394,7 @@ def build_auto_config(
             "reprocess_reason": None,
             "start_stage": "ingestion",
             "requested_by": "airflow_new_partition",
+            "transformation_version": transformation_version,
             "source_etag": source_metadata.get("etag"),
             "source_last_modified": source_metadata.get("last_modified"),
             "source_content_length": source_metadata.get("content_length"),
@@ -443,6 +481,16 @@ def ingest_dataset_month(config: dict[str, Any]) -> None:
     )
 
 
+def run_pipeline_stage(stage: str, config: dict[str, Any]) -> dict[str, Any]:
+    if not stage_should_run(config, stage):
+        return mark_stage_result(config, stage, "skipped")
+    if stage == "ingestion":
+        ingest_dataset_month(config)
+    else:
+        run_dbt_stage(stage, config)
+    return mark_stage_result(config, stage, "completed")
+
+
 def run_dbt_stage(stage: str, config: dict[str, Any]) -> None:
     run_command(
         dbt_command(stage, config),
@@ -453,6 +501,12 @@ def run_dbt_stage(stage: str, config: dict[str, Any]) -> None:
             lakehouse_root=str(config["landing_root"]),
         ),
     )
+
+
+def state_stages_for_runtime_stage(stage: str) -> tuple[str, ...]:
+    if stage == "silver":
+        return ("silver", "ops")
+    return (stage,)
 
 
 def record_stage_completion(
@@ -466,33 +520,94 @@ def record_stage_completion(
     data_interval_end: str | None = None,
 ) -> PipelineStageStateDTO:
     dataset = dataset_from_config(config)
-    state = record_pipeline_stage_state(
-        lakehouse_root=str(config["landing_root"]),
-        dataset=dataset,
-        stage=stage,
-        dag_id=dag_id,
-        run_id=run_id,
-        task_id=task_id,
-        data_interval_start=data_interval_start
-        if data_interval_start is not None
-        else str(config["data_interval_start"])
-        if config.get("data_interval_start") is not None
-        else None,
-        data_interval_end=data_interval_end
-        if data_interval_end is not None
-        else str(config["data_interval_end"])
-        if config.get("data_interval_end") is not None
-        else None,
-        transformation_version=str(config["transformation_version"])
-        if config.get("transformation_version") is not None
-        else None,
-    )
+    state: PipelineStageStateDTO | None = None
+    for state_stage in state_stages_for_runtime_stage(stage):
+        state = record_pipeline_stage_state(
+            lakehouse_root=str(config["landing_root"]),
+            dataset=dataset,
+            stage=state_stage,
+            dag_id=dag_id,
+            run_id=run_id,
+            task_id=task_id,
+            data_interval_start=data_interval_start
+            if data_interval_start is not None
+            else str(config["data_interval_start"])
+            if config.get("data_interval_start") is not None
+            else None,
+            data_interval_end=data_interval_end
+            if data_interval_end is not None
+            else str(config["data_interval_end"])
+            if config.get("data_interval_end") is not None
+            else None,
+            transformation_version=str(config["transformation_version"])
+            if config.get("transformation_version") is not None
+            else None,
+        )
     if stage == "gold" and config.get("reprocess_reason") not in {None, "manual_override"}:
         mark_reprocess_request_completed(
             lakehouse_root=str(config["landing_root"]),
             dataset=dataset,
         )
+    if state is None:
+        raise ValueError(f"no state recorded for stage: {stage}")
     return state
+
+
+def landing_object_exists(config: dict[str, Any]) -> bool:
+    dataset = dataset_from_config(config)
+    source_config = load_source_config(dataset.service)
+    landing_uri = build_landing_object_uri(
+        source_config,
+        dataset,
+        str(config["landing_root"]),
+    )
+    return uri_exists(landing_uri)
+
+
+def build_validation_metadata(
+    *,
+    config: dict[str, Any],
+    expected_stages: tuple[str, ...] = CLOUD_VALIDATION_EXPECTED_STAGES,
+) -> dict[str, Any]:
+    dataset = dataset_from_config(config)
+    transformation_version = str(config.get("transformation_version", "")).strip()
+    stage_states: dict[str, dict[str, Any]] = {}
+    missing_stages: list[str] = []
+    mismatched_stages: list[str] = []
+
+    for stage in expected_stages:
+        state = read_pipeline_stage_state(
+            lakehouse_root=str(config["landing_root"]),
+            dataset=dataset,
+            stage=stage,
+        )
+        if state is None:
+            missing_stages.append(stage)
+            continue
+        stage_states[stage] = asdict(state)
+        if transformation_version and state.transformation_version != transformation_version:
+            mismatched_stages.append(stage)
+
+    landing_exists = landing_object_exists(config)
+    status = "success"
+    if missing_stages or mismatched_stages or not landing_exists:
+        status = "failed"
+
+    return {
+        "dataset": {
+            "service": dataset.service,
+            "year": dataset.year,
+            "month": dataset.month,
+            "dataset_month": f"{dataset.year:04d}-{dataset.month:02d}",
+        },
+        "landing_root": str(config["landing_root"]),
+        "landing_object_exists": landing_exists,
+        "expected_stages": list(expected_stages),
+        "stage_states": stage_states,
+        "missing_stages": missing_stages,
+        "mismatched_transformation_version_stages": mismatched_stages,
+        "verification_status": status,
+    }
 
 
 def stage_task_id(service: str, stage: str) -> str:
@@ -500,4 +615,6 @@ def stage_task_id(service: str, stage: str) -> str:
 
 
 def default_data_interval_end(year: int, month: int) -> str:
-    return datetime(year=year, month=month, day=1).isoformat()
+    if month == 12:
+        return datetime(year=year + 1, month=1, day=1).isoformat()
+    return datetime(year=year, month=month + 1, day=1).isoformat()
