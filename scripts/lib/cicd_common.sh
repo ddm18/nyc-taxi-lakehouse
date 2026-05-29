@@ -81,8 +81,9 @@ timestamp_utc() {
 
 dispatch_workflow() {
   local workflow_file="$1"
+  local workflow_ref="${WORKFLOW_REF:-main}"
   shift
-  gh workflow run "${workflow_file}" --ref main "$@"
+  gh workflow run "${workflow_file}" --ref "${workflow_ref}" "$@"
 }
 
 wait_for_workflow_dispatch_run() {

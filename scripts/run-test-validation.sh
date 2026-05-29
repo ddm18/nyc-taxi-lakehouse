@@ -65,6 +65,7 @@ log "Repository: ${REPO_SLUG}"
 log "Commit: ${COMMIT_SHA}"
 log "Source branch: ${SOURCE_BRANCH}"
 
+WORKFLOW_REF="${SOURCE_BRANCH}" \
 dispatch_workflow \
   run-test-validation.yml \
   -f "commit_sha=${COMMIT_SHA}" \
